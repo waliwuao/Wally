@@ -1,0 +1,10 @@
+{
+  "template_name": "default",
+  "files": {
+    ".gitignore": "temp/\ntarget/\n**/*.DS_Store\n",
+    "src/": "",
+    "temp/": "",
+    "info/": "",
+    "script/push.sh": "#!/bin/bash\ngit remote add origin <your_remote_url>\ngit add .\ngit commit -m \"auto push\"\ngit push -u origin main"
+  }
+}
