@@ -2,7 +2,6 @@ use crate::models::ProjectTemplate;
 use anyhow::Result;
 use ignore::WalkBuilder;
 use std::fs::{self, File};
-use std::path::Path;
 
 pub fn run() -> Result<()> {
     let current_dir = std::env::current_dir()?;

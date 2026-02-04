@@ -1,0 +1,15 @@
+wally/
+├── .gitignore
+├── Cargo.lock
+├── Cargo.toml
+├── src/
+│   ├── cli.rs
+│   ├── cmd/
+│   │   ├── mod.rs
+│   │   ├── new.rs
+│   │   ├── pack.rs
+│   │   └── tree.rs
+│   ├── main.rs
+│   └── models.rs
+└── templates/
+    └── default.json
