@@ -1,239 +1,216 @@
 use anyhow::{Context, Result};
 use console::{Style, Term};
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::Command;
 
 pub fn run() -> Result<()> {
+    let current_branch = get_current_branch()?;
+    
+    if current_branch == "master" {
+        println!("Detected 'master' branch. Renaming to 'main' for compatibility...");
+        Command::new("git").args(&["branch", "-m", "master", "main"]).status()?;
+    }
+
     let has_changes = check_if_dirty()?;
     let mut stashed = false;
 
     if has_changes {
-        println!("Local changes detected. Stashing...");
+        println!("Local changes detected. Stashing to keep workspace clean...");
         stash_push()?;
         stashed = true;
     }
 
-    println!("Fetching and rebasing...");
-    if let Err(_) = pull_rebase() {
-        handle_rebase_conflict_loop()?;
+    println!("Synchronizing with remote...");
+    
+    let pull_status = Command::new("git")
+        .args(&["pull", "--rebase"])
+        .status()?;
+
+    if !pull_status.success() {
+        if is_rebase_in_progress()? {
+            handle_rebase_conflict_loop()?;
+        } else {
+            println!("Standard pull failed (perhaps no tracking info).");
+            let remote = "origin";
+            let branch = get_current_branch()?;
+            
+            println!("Attempting to sync with {}/{}...", remote, branch);
+            let retry_status = Command::new("git")
+                .args(&["pull", "--rebase", remote, &branch])
+                .status()?;
+                
+            if !retry_status.success() {
+                if is_rebase_in_progress()? {
+                    handle_rebase_conflict_loop()?;
+                } else {
+                    return Err(anyhow::anyhow!("Could not sync with remote. Please check your internet or remote settings."));
+                }
+            }
+        }
     }
 
     if stashed {
-        println!("Restoring local changes...");
+        println!("Restoring your local changes...");
         if let Err(_) = stash_pop() {
             handle_stash_conflict_loop()?;
         }
     }
 
-    println!("Sync completed successfully.");
+    println!("{}", Style::new().green().bold().apply_to("Sync completed successfully!"));
     Ok(())
+}
+
+fn get_current_branch() -> Result<String> {
+    let output = Command::new("git")
+        .args(&["branch", "--show-current"])
+        .output()?;
+    let branch = String::from_utf8(output.stdout)?.trim().to_string();
+    if branch.is_empty() {
+        Ok("main".to_string())
+    } else {
+        Ok(branch)
+    }
 }
 
 fn check_if_dirty() -> Result<bool> {
     let output = Command::new("git")
         .args(&["status", "--porcelain"])
-        .output()
-        .context("Failed to check git status")?;
-
+        .output()?;
     Ok(!output.stdout.is_empty())
 }
 
 fn stash_push() -> Result<()> {
-    let status = Command::new("git")
+    Command::new("git")
         .args(&["stash", "push", "-m", "wally-auto-sync"])
-        .status()
-        .context("Failed to stash changes")?;
-
-    if !status.success() {
-        return Err(anyhow::anyhow!("Failed to execute git stash"));
-    }
+        .status()?;
     Ok(())
 }
 
 fn stash_pop() -> Result<()> {
-    let status = Command::new("git")
-        .args(&["stash", "pop"])
-        .status()
-        .context("Failed to pop stash")?;
-
+    let status = Command::new("git").args(&["stash", "pop"]).status()?;
     if !status.success() {
-        return Err(anyhow::anyhow!("Stash pop failed"));
+        return Err(anyhow::anyhow!("Stash pop conflict"));
     }
     Ok(())
 }
 
-fn pull_rebase() -> Result<()> {
-    let status = Command::new("git")
-        .args(&["pull", "--rebase"])
-        .status()
-        .context("Failed to execute git pull --rebase")?;
+fn is_rebase_in_progress() -> Result<bool> {
+    let output = Command::new("git").args(&["rev-parse", "--git-dir"]).output()?;
+    let git_dir = String::from_utf8(output.stdout)?.trim().to_string();
+    let path = Path::new(&git_dir);
+    Ok(path.join("rebase-merge").exists() || path.join("rebase-apply").exists())
+}
 
-    if !status.success() {
-        return Err(anyhow::anyhow!("Rebase failed"));
-    }
-    Ok(())
+fn get_conflicted_files() -> Result<Vec<String>> {
+    let output = Command::new("git").args(&["status", "--porcelain"]).output()?;
+    let stdout = String::from_utf8(output.stdout)?;
+    Ok(stdout.lines()
+        .filter(|l| l.starts_with("UU") || l.starts_with("AA") || l.starts_with("DU") || l.starts_with("UD"))
+        .filter_map(|l| if l.len() > 3 { Some(l[3..].to_string()) } else { None })
+        .collect())
 }
 
 fn handle_rebase_conflict_loop() -> Result<()> {
     let term = Term::stdout();
-    let red = Style::new().red();
+    let red = Style::new().red().bold();
     let yellow = Style::new().yellow();
     let green = Style::new().green();
 
     loop {
-        term.clear_screen()?;
-        println!("{}", red.apply_to("CONFLICTS DETECTED DURING REBASE"));
-        println!("The following files have merge conflicts:\n");
+        let files = get_conflicted_files()?;
+        if files.is_empty() { break; }
 
-        let conflicted_files = get_conflicted_files()?;
-        if conflicted_files.is_empty() {
-            println!("{}", green.apply_to("No conflicted files found."));
-        } else {
-            for file in &conflicted_files {
-                print_conflict_details(file)?;
-            }
+        term.clear_screen()?;
+        println!("{}", red.apply_to("=== CONFLICTS DETECTED ==="));
+        println!("The following files have markers (<<<<<<<, =======, >>>>>>>):\n");
+
+        for file in &files {
+            print_conflict_details(file)?;
         }
 
-        println!("\n{}", yellow.apply_to("Please open the files above, resolve the conflicts, and save them."));
+        println!("{}", yellow.apply_to("Instructions:"));
+        println!("1. Open the files listed above in your editor.");
+        println!("2. Look for conflict markers and decide which code to keep.");
+        println!("3. Delete the markers and save the files.");
+        println!("4. Return here and select 'Resolved'.\n");
 
-        let choices = vec!["I have resolved the conflicts (Continue)", "Abort Sync"];
+        let choices = vec!["I have resolved all conflicts", "Abort Sync"];
         let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select action")
+            .with_prompt("What would you like to do?")
             .default(0)
             .items(&choices)
             .interact()?;
 
         if selection == 1 {
             Command::new("git").args(&["rebase", "--abort"]).status()?;
-            return Err(anyhow::anyhow!("Sync aborted by user"));
+            return Err(anyhow::anyhow!("Sync aborted."));
         }
 
-        println!("Staging changes...");
+        println!("Applying resolutions...");
         Command::new("git").args(&["add", "."]).status()?;
-
-        println!("Continuing rebase...");
+        
         let status = Command::new("git")
-            .env("GIT_EDITOR", "true") 
+            .env("GIT_EDITOR", "true")
             .args(&["rebase", "--continue"])
             .status()?;
 
         if status.success() {
-            println!("{}", green.apply_to("Rebase resolved successfully!"));
+            println!("{}", green.apply_to("Rebase continued successfully!"));
             break;
         } else {
-            println!("{}", red.apply_to("Rebase continue failed. Conflicts might still exist."));
-            std::thread::sleep(std::time::Duration::from_secs(2));
+            println!("{}", red.apply_to("Some conflicts are still not resolved. Please check again."));
+            std::thread::sleep(std::time::Duration::from_secs(3));
         }
     }
-
     Ok(())
 }
 
 fn handle_stash_conflict_loop() -> Result<()> {
-    let term = Term::stdout();
-    let red = Style::new().red();
+    let red = Style::new().red().bold();
     let yellow = Style::new().yellow();
-    let green = Style::new().green();
 
-    loop {
-        term.clear_screen()?;
-        println!("{}", red.apply_to("CONFLICTS DETECTED DURING STASH POP"));
-        println!("Your local changes conflict with the incoming updates.\n");
-
-        let conflicted_files = get_conflicted_files()?;
-        for file in &conflicted_files {
-            print_conflict_details(file)?;
-        }
-
-        println!("\n{}", yellow.apply_to("Please resolve the conflicts in the files above."));
-
-        let choices = vec!["I have resolved the conflicts", "Abort (Changes remain in stash list)"];
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select action")
-            .default(0)
-            .items(&choices)
-            .interact()?;
-
-        if selection == 1 {
-            return Err(anyhow::anyhow!("Stash pop cleanup aborted. You may need to reset or drop stash manually."));
-        }
-
-        let remaining_conflicts = get_conflicted_files()?;
-        if remaining_conflicts.is_empty() {
-            println!("{}", green.apply_to("Conflicts resolved."));
-            Command::new("git").args(&["stash", "drop"]).status()?;
-            break;
-        } else {
-            println!("{}", red.apply_to("Conflicts still detected. Please ensure markers are removed."));
-            std::thread::sleep(std::time::Duration::from_secs(2));
-        }
+    println!("\n{}", red.apply_to("=== STASH POP CONFLICT ==="));
+    let files = get_conflicted_files()?;
+    for file in &files {
+        println!("  - {}", file);
     }
-
+    println!("\n{}", yellow.apply_to("Your local uncommitted changes conflicted with the new remote code."));
+    println!("Please resolve them manually. Your work is safe in 'git stash list'.");
     Ok(())
-}
-
-fn get_conflicted_files() -> Result<Vec<String>> {
-    let output = Command::new("git")
-        .args(&["status", "--porcelain"])
-        .output()?;
-    
-    let stdout = String::from_utf8(output.stdout)?;
-    let mut files = Vec::new();
-
-    for line in stdout.lines() {
-        // Look for 'UU', 'AA', 'UD', etc.
-        if line.starts_with("UU") || line.starts_with("AA") || line.starts_with("DU") || line.starts_with("UD") {
-            if line.len() > 3 {
-                files.push(line[3..].to_string());
-            }
-        }
-    }
-
-    Ok(files)
 }
 
 fn print_conflict_details(file_path: &str) -> Result<()> {
     let path = Path::new(file_path);
-    let cyan = Style::new().cyan();
+    let cyan = Style::new().cyan().bold();
     let blue = Style::new().blue();
     
     println!("{}", cyan.apply_to(format!("File: {}", file_path)));
     
-    if !path.exists() {
-        return Ok(());
-    }
+    if path.exists() {
+        let file = fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut inside = false;
+        let mut count = 0;
 
-    let file = fs::File::open(path)?;
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader.lines().map(|l| l.unwrap_or_default()).collect();
-
-    let mut inside_conflict = false;
-    let mut printed_count = 0;
-
-    for (i, line) in lines.iter().enumerate() {
-        if line.starts_with("<<<<<<<") {
-            inside_conflict = true;
-            println!("  {}", blue.apply_to(format!("Line {}: Start of conflict", i + 1)));
-        }
-
-        if inside_conflict {
-            println!("    {}", line);
-        }
-
-        if line.starts_with(">>>>>>>") {
-            inside_conflict = false;
-            println!("  {}", blue.apply_to(format!("Line {}: End of conflict", i + 1)));
-            println!("");
-            printed_count += 1;
-            if printed_count >= 3 {
-                println!("    ... (more conflicts hidden) ...");
-                break;
+        for (i, line_res) in reader.lines().enumerate() {
+            let line = line_res.unwrap_or_default();
+            if line.starts_with("<<<<<<<") {
+                inside = true;
+                println!("  {}", blue.apply_to(format!("Line {}:", i + 1)));
+            }
+            if inside {
+                println!("    {}", line);
+            }
+            if line.starts_with(">>>>>>>") {
+                inside = false;
+                count += 1;
+                if count >= 2 { break; }
             }
         }
     }
-
+    println!();
     Ok(())
 }
