@@ -1,28 +1,28 @@
 use crate::cmd::DEFAULT_TEMPLATE;
 use crate::models::ProjectTemplate;
 use anyhow::{Context, Result};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
-    let root_path = Path::new(project_name);
-    if root_path.exists() {
-        return Err(anyhow::anyhow!("Directory '{}' already exists.", project_name));
-    }
-
-    let template_content = if let Some(t_name) = template_name {
-        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
-        let t_path = PathBuf::from(home)
-            .join(".wally/templates")
-            .join(format!("{}.json", t_name));
-        fs::read_to_string(t_path).context("Template not found")?
-    } else {
-        DEFAULT_TEMPLATE.to_string()
+pub fn run(project_name: Option<String>, template_name: Option<String>) -> Result<()> {
+    let name = match project_name {
+        Some(n) => n,
+        None => Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("Project name")
+            .interact_text()
+            .context("Failed to read project name")?,
     };
 
+    let template_content = get_template_content(template_name)?;
     let template: ProjectTemplate = serde_json::from_str(&template_content)?;
+
+    let root_path = Path::new(&name);
+    if root_path.exists() {
+        return Err(anyhow::anyhow!("Directory '{}' already exists.", name));
+    }
 
     fs::create_dir_all(root_path)?;
 
@@ -54,7 +54,54 @@ pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
         }
     }
 
-    println!("Project '{}' created successfully.", project_name);
-
+    println!("Project '{}' created successfully.", name);
     Ok(())
+}
+
+fn get_template_content(template_name: Option<String>) -> Result<String> {
+    if let Some(name) = template_name {
+        load_template(&name)
+    } else {
+        let mut templates = vec!["default".to_string()];
+        
+        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
+        let templates_dir = PathBuf::from(&home).join(".wally/templates");
+        
+        if templates_dir.exists() {
+            for entry in fs::read_dir(templates_dir)? {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            templates.push(stem.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select a template")
+            .default(0)
+            .items(&templates)
+            .interact()?;
+
+        if templates[selection] == "default" {
+            Ok(DEFAULT_TEMPLATE.to_string())
+        } else {
+            load_template(&templates[selection])
+        }
+    }
+}
+
+fn load_template(name: &str) -> Result<String> {
+    if name == "default" {
+        return Ok(DEFAULT_TEMPLATE.to_string());
+    }
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
+    let path = PathBuf::from(home)
+        .join(".wally/templates")
+        .join(format!("{}.json", name));
+    
+    fs::read_to_string(path).context("Template not found")
 }

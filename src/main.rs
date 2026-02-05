@@ -11,7 +11,7 @@ fn main() -> Result<()> {
 
     match args.command {
         Commands::New { project_name, template } => {
-            cmd::new::run(&project_name, template)?;
+            cmd::new::run(project_name, template)?;
         }
         Commands::Context => {
             cmd::context::run()?;
@@ -19,17 +19,14 @@ fn main() -> Result<()> {
         Commands::List => {
             cmd::list::run()?;
         }
-        Commands::Add { files } => {
-            cmd::add::run(files)?;
-        }
         Commands::Commit => {
             cmd::commit::run()?;
         }
-        Commands::Push { url } => {
-            cmd::push::run(url)?;
-        }
         Commands::Branch => {
             cmd::branch::run()?;
+        }
+        Commands::Sync => {
+            cmd::sync::run()?;
         }
         Commands::Reset => {
             cmd::reset::run()?;

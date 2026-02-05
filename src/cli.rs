@@ -10,21 +10,15 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     New {
-        project_name: String,
+        project_name: Option<String>,
         #[arg(short, long)]
         template: Option<String>,
     },
     Context,
     List,
-    Add {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        files: Vec<String>,
-    },
     Commit,
-    Push {
-        url: Option<String>,
-    },
     Branch,
+    Sync,
     Reset,
     Install {
         path: String,
