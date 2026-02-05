@@ -19,6 +19,15 @@ fn main() -> Result<()> {
         Commands::List => {
             cmd::list::run()?;
         }
+        Commands::Add { files } => {
+            cmd::add::run(files)?;
+        }
+        Commands::Commit => {
+            cmd::commit::run()?;
+        }
+        Commands::Push { url } => {
+            cmd::push::run(url)?;
+        }
     }
 
     Ok(())

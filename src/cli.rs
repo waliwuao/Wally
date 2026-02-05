@@ -16,4 +16,13 @@ pub enum Commands {
     },
     Tree,
     List,
+    Add {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        files: Vec<String>,
+    },
+    Commit,
+    Push {
+        #[arg(short, long)]
+        url: Option<String>,
+    },
 }

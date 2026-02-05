@@ -5,9 +5,9 @@ wally/
 ├── src/
 │   ├── cli.rs
 │   ├── cmd/
+│   │   ├── list.rs
 │   │   ├── mod.rs
 │   │   ├── new.rs
-│   │   ├── pack.rs
 │   │   └── tree.rs
 │   ├── main.rs
 │   └── models.rs
