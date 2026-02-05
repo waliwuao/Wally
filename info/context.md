@@ -9,15 +9,15 @@ wally/
 ├── src/
 │   ├── cli.rs
 │   ├── cmd/
-│   │   ├── add.rs
+│   │   ├── branch.rs
 │   │   ├── commit.rs
 │   │   ├── context.rs
 │   │   ├── install.rs
 │   │   ├── list.rs
 │   │   ├── mod.rs
 │   │   ├── new.rs
-│   │   ├── push.rs
 │   │   ├── reset.rs
+│   │   ├── sync.rs
 │   │   └── uninstall.rs
 │   ├── main.rs
 │   └── models.rs
@@ -65,20 +65,15 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     New {
-        project_name: String,
+        project_name: Option<String>,
         #[arg(short, long)]
         template: Option<String>,
     },
     Context,
     List,
-    Add {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        files: Vec<String>,
-    },
     Commit,
-    Push {
-        url: Option<String>,
-    },
+    Branch,
+    Sync,
     Reset,
     Install {
         path: String,
@@ -89,37 +84,175 @@ pub enum Commands {
 }
 ```
 
-### src/cmd/add.rs
+### src/cmd/branch.rs
 ```rs
 use anyhow::{Context, Result};
+use dialoguer::{theme::ColorfulTheme, Input, MultiSelect, Select};
 use std::process::Command;
 
-pub fn run(files: Vec<String>) -> Result<()> {
-    let mut args = vec!["add"];
-    let refs: Vec<&str> = files.iter().map(|s| s.as_str()).collect();
-    args.extend(refs);
+pub fn run() -> Result<()> {
+    let actions = vec!["Switch Branch", "Create New Branch", "Delete Branch"];
+    
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select branch action")
+        .default(0)
+        .items(&actions)
+        .interact()
+        .context("Failed to read selection")?;
 
-    if args.len() == 1 {
-        args.push(".");
+    match selection {
+        0 => switch_branch(),
+        1 => create_branch(),
+        2 => delete_branch(),
+        _ => Ok(()),
+    }
+}
+
+fn switch_branch() -> Result<()> {
+    let branches = get_branches()?;
+    if branches.is_empty() {
+        return Err(anyhow::anyhow!("No branches found"));
+    }
+
+    let current = get_current_branch()?;
+    let default_index = branches.iter().position(|b| b == &current).unwrap_or(0);
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select branch to switch to")
+        .default(default_index)
+        .items(&branches)
+        .interact()
+        .context("Failed to select branch")?;
+
+    let target = &branches[selection];
+
+    if target == &current {
+        println!("Already on branch '{}'", target);
+        return Ok(());
     }
 
     let status = Command::new("git")
-        .args(&args)
+        .args(&["checkout", target])
         .status()
-        .context("Failed to execute git add")?;
+        .context("Failed to switch branch")?;
 
     if !status.success() {
-        return Err(anyhow::anyhow!("git add failed"));
+        return Err(anyhow::anyhow!("Failed to checkout branch {}", target));
     }
 
     Ok(())
+}
+
+fn create_branch() -> Result<()> {
+    let types = vec!["feat", "fix", "chore", "docs", "refactor", "style", "test", "other"];
+    
+    let type_selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select branch type")
+        .default(0)
+        .items(&types)
+        .interact()
+        .context("Failed to select branch type")?;
+
+    let prefix = types[type_selection];
+
+    let name: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Branch name")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            if input.trim().is_empty() {
+                Err("Branch name cannot be empty")
+            } else if input.contains(char::is_whitespace) {
+                Err("Branch name cannot contain spaces")
+            } else {
+                Ok(())
+            }
+        })
+        .interact_text()
+        .context("Failed to read branch name")?;
+
+    let full_name = if prefix == "other" {
+        name
+    } else {
+        format!("{}/{}", prefix, name)
+    };
+
+    let status = Command::new("git")
+        .args(&["checkout", "-b", &full_name])
+        .status()
+        .context("Failed to create branch")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("Failed to create branch {}", full_name));
+    }
+
+    Ok(())
+}
+
+fn delete_branch() -> Result<()> {
+    let current = get_current_branch()?;
+    let branches = get_branches()?;
+    
+    let available_to_delete: Vec<String> = branches
+        .into_iter()
+        .filter(|b| b != &current)
+        .collect();
+
+    if available_to_delete.is_empty() {
+        println!("No other branches available to delete.");
+        return Ok(());
+    }
+
+    let selections = MultiSelect::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select branches to delete (SPACE to select, ENTER to confirm)")
+        .items(&available_to_delete)
+        .interact()
+        .context("Failed to select branches")?;
+
+    if selections.is_empty() {
+        println!("No branches selected.");
+        return Ok(());
+    }
+
+    for index in selections {
+        let branch_name = &available_to_delete[index];
+        let status = Command::new("git")
+            .args(&["branch", "-D", branch_name])
+            .status()
+            .context("Failed to execute git branch -D")?;
+
+        if status.success() {
+            println!("Deleted branch '{}'", branch_name);
+        } else {
+            eprintln!("Failed to delete branch '{}'", branch_name);
+        }
+    }
+
+    Ok(())
+}
+
+fn get_branches() -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(&["branch", "--format=%(refname:short)"])
+        .output()
+        .context("Failed to list branches")?;
+
+    let stdout = String::from_utf8(output.stdout)?;
+    Ok(stdout.lines().map(|s| s.trim().to_string()).collect())
+}
+
+fn get_current_branch() -> Result<String> {
+    let output = Command::new("git")
+        .args(&["branch", "--show-current"])
+        .output()
+        .context("Failed to get current branch")?;
+
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 ```
 
 ### src/cmd/commit.rs
 ```rs
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Input, Select};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use std::process::Command;
 
 struct CommitType<'a> {
@@ -142,43 +275,122 @@ const COMMIT_TYPES: &[CommitType] = &[
 ];
 
 pub fn run() -> Result<()> {
+    if !stage_files()? {
+        println!("No files staged. Skipping commit.");
+        return Ok(());
+    }
+
+    let message = build_commit_message()?;
+    
+    let status = Command::new("git")
+        .arg("commit")
+        .arg("-m")
+        .arg(&message)
+        .status()
+        .context("Failed to execute git commit")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("git commit failed"));
+    }
+
+    println!("Commit successful!");
+
+    if Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("Do you want to push to remote?")
+        .default(true)
+        .interact()?
+    {
+        push_workflow()?;
+    }
+
+    Ok(())
+}
+
+fn stage_files() -> Result<bool> {
+    let output = Command::new("git")
+        .args(&["status", "--porcelain"])
+        .output()
+        .context("Failed to get git status")?;
+
+    let stdout = String::from_utf8(output.stdout)?;
+    if stdout.is_empty() {
+        return Ok(false);
+    }
+
+    let mut files = Vec::new();
+    let mut items = vec!["[ALL] (Select this to stage ALL changes)".to_string()];
+
+    for line in stdout.lines() {
+        if line.len() > 3 {
+            let status_code = &line[0..2];
+            let file = &line[3..];
+            
+            let status_text = match status_code {
+                "??" => "Untracked",
+                " M" | "M " => "Modified ",
+                " A" | "A " => "Added    ",
+                " D" | "D " => "Deleted  ",
+                " R" | "R " => "Renamed  ",
+                "UU" => "Conflict ",
+                _ => status_code.trim(),
+            };
+
+            files.push(file.to_string());
+            items.push(format!("[{}] {}", status_text.trim(), file));
+        }
+    }
+
+    let selections = MultiSelect::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select files to stage (SPACE to select, ENTER to confirm)")
+        .items(&items)
+        .interact()?;
+
+    if selections.is_empty() {
+        return Ok(false);
+    }
+
+    if selections.contains(&0) {
+        Command::new("git").args(&["add", "."]).status()?;
+    } else {
+        for &index in &selections {
+            let file_index = index - 1;
+            Command::new("git").arg("add").arg(&files[file_index]).status()?;
+        }
+    }
+
+    Ok(true)
+}
+
+fn build_commit_message() -> Result<String> {
     let items: Vec<String> = COMMIT_TYPES
         .iter()
         .map(|t| format!("{:<10} {}", t.code, t.desc))
         .collect();
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select the type of change that you're committing")
+        .with_prompt("Select the type of change")
         .default(0)
         .items(&items)
-        .interact()
-        .context("Failed to read selection")?;
+        .interact()?;
 
     let selected_type = COMMIT_TYPES[selection].code;
 
     let scope: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Scope (optional)")
         .allow_empty(true)
-        .interact_text()
-        .context("Failed to read scope")?;
+        .interact()?;
 
     let subject: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Subject (short description)")
         .validate_with(|input: &String| -> Result<(), &str> {
-            if input.trim().is_empty() {
-                Err("Subject cannot be empty")
-            } else {
-                Ok(())
-            }
+            if input.trim().is_empty() { Err("Subject cannot be empty") } else { Ok(()) }
         })
-        .interact_text()
-        .context("Failed to read subject")?;
+        .interact()?;
 
     let body: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Body (detailed description, optional)")
         .allow_empty(true)
-        .interact_text()
-        .context("Failed to read body")?;
+        .interact()?;
 
     let mut message = if scope.trim().is_empty() {
         format!("{}: {}", selected_type, subject)
@@ -191,17 +403,29 @@ pub fn run() -> Result<()> {
         message.push_str(&body);
     }
 
-    let status = Command::new("git")
-        .arg("commit")
-        .arg("-m")
-        .arg(message)
-        .status()
-        .context("Failed to execute git commit")?;
+    Ok(message)
+}
 
-    if !status.success() {
-        return Err(anyhow::anyhow!("git commit failed"));
+fn push_workflow() -> Result<()> {
+    let remote_output = Command::new("git").args(&["remote"]).output()?;
+    let has_remote = !remote_output.stdout.is_empty();
+
+    if !has_remote {
+        let url: String = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("No remote found. Enter remote URL to add origin")
+            .interact_text()?;
+        
+        Command::new("git").args(&["remote", "add", "origin", &url]).status()?;
+        Command::new("git").args(&["push", "-u", "origin", "main"]).status()?;
+    } else {
+        let status = Command::new("git").arg("push").status()?;
+        if !status.success() {
+            println!("Standard push failed. Trying to set upstream...");
+            let branch_output = Command::new("git").args(&["branch", "--show-current"]).output()?;
+            let branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
+            Command::new("git").args(&["push", "-u", "origin", &branch]).status()?;
+        }
     }
-
     Ok(())
 }
 ```
@@ -438,14 +662,14 @@ fn print_row(name: &str, desc: &str) {
 
 ### src/cmd/mod.rs
 ```rs
-pub mod add;
+pub mod branch;
 pub mod commit;
 pub mod context;
 pub mod install;
 pub mod list;
 pub mod new;
-pub mod push;
 pub mod reset;
+pub mod sync;
 pub mod uninstall;
 
 pub const DEFAULT_TEMPLATE: &str = include_str!("../../templates/default.json");
@@ -456,28 +680,28 @@ pub const DEFAULT_TEMPLATE: &str = include_str!("../../templates/default.json");
 use crate::cmd::DEFAULT_TEMPLATE;
 use crate::models::ProjectTemplate;
 use anyhow::{Context, Result};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
-    let root_path = Path::new(project_name);
-    if root_path.exists() {
-        return Err(anyhow::anyhow!("Directory '{}' already exists.", project_name));
-    }
-
-    let template_content = if let Some(t_name) = template_name {
-        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
-        let t_path = PathBuf::from(home)
-            .join(".wally/templates")
-            .join(format!("{}.json", t_name));
-        fs::read_to_string(t_path).context("Template not found")?
-    } else {
-        DEFAULT_TEMPLATE.to_string()
+pub fn run(project_name: Option<String>, template_name: Option<String>) -> Result<()> {
+    let name = match project_name {
+        Some(n) => n,
+        None => Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("Project name")
+            .interact_text()
+            .context("Failed to read project name")?,
     };
 
+    let template_content = get_template_content(template_name)?;
     let template: ProjectTemplate = serde_json::from_str(&template_content)?;
+
+    let root_path = Path::new(&name);
+    if root_path.exists() {
+        return Err(anyhow::anyhow!("Directory '{}' already exists.", name));
+    }
 
     fs::create_dir_all(root_path)?;
 
@@ -509,52 +733,56 @@ pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
         }
     }
 
-    println!("Project '{}' created successfully.", project_name);
-
+    println!("Project '{}' created successfully.", name);
     Ok(())
 }
-```
 
-### src/cmd/push.rs
-```rs
-use anyhow::{Context, Result};
-use std::process::Command;
-
-pub fn run(url: Option<String>) -> Result<()> {
-    if let Some(remote_url) = url {
-        let _ = Command::new("git")
-            .args(&["remote", "add", "origin", &remote_url])
-            .output();
-
-        let _ = Command::new("git")
-            .args(&["remote", "set-url", "origin", &remote_url])
-            .output();
-
-        Command::new("git")
-            .args(&["branch", "-M", "main"])
-            .status()
-            .context("Failed to rename branch to main")?;
-
-        let status = Command::new("git")
-            .args(&["push", "-u", "origin", "main"])
-            .status()
-            .context("Failed to push to remote")?;
-
-        if !status.success() {
-            return Err(anyhow::anyhow!("Push failed"));
-        }
+fn get_template_content(template_name: Option<String>) -> Result<String> {
+    if let Some(name) = template_name {
+        load_template(&name)
     } else {
-        let status = Command::new("git")
-            .arg("push")
-            .status()
-            .context("Failed to execute git push")?;
+        let mut templates = vec!["default".to_string()];
+        
+        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
+        let templates_dir = PathBuf::from(&home).join(".wally/templates");
+        
+        if templates_dir.exists() {
+            for entry in fs::read_dir(templates_dir)? {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            templates.push(stem.to_string());
+                        }
+                    }
+                }
+            }
+        }
 
-        if !status.success() {
-            return Err(anyhow::anyhow!("git push failed"));
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select a template")
+            .default(0)
+            .items(&templates)
+            .interact()?;
+
+        if templates[selection] == "default" {
+            Ok(DEFAULT_TEMPLATE.to_string())
+        } else {
+            load_template(&templates[selection])
         }
     }
+}
 
-    Ok(())
+fn load_template(name: &str) -> Result<String> {
+    if name == "default" {
+        return Ok(DEFAULT_TEMPLATE.to_string());
+    }
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
+    let path = PathBuf::from(home)
+        .join(".wally/templates")
+        .join(format!("{}.json", name));
+    
+    fs::read_to_string(path).context("Template not found")
 }
 ```
 
@@ -608,6 +836,249 @@ pub fn run() -> Result<()> {
 }
 ```
 
+### src/cmd/sync.rs
+```rs
+use anyhow::{Context, Result};
+use console::{Style, Term};
+use dialoguer::{theme::ColorfulTheme, Select};
+use std::fs;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+use std::process::Command;
+
+pub fn run() -> Result<()> {
+    let has_changes = check_if_dirty()?;
+    let mut stashed = false;
+
+    if has_changes {
+        println!("Local changes detected. Stashing...");
+        stash_push()?;
+        stashed = true;
+    }
+
+    println!("Fetching and rebasing...");
+    if let Err(_) = pull_rebase() {
+        handle_rebase_conflict_loop()?;
+    }
+
+    if stashed {
+        println!("Restoring local changes...");
+        if let Err(_) = stash_pop() {
+            handle_stash_conflict_loop()?;
+        }
+    }
+
+    println!("Sync completed successfully.");
+    Ok(())
+}
+
+fn check_if_dirty() -> Result<bool> {
+    let output = Command::new("git")
+        .args(&["status", "--porcelain"])
+        .output()
+        .context("Failed to check git status")?;
+
+    Ok(!output.stdout.is_empty())
+}
+
+fn stash_push() -> Result<()> {
+    let status = Command::new("git")
+        .args(&["stash", "push", "-m", "wally-auto-sync"])
+        .status()
+        .context("Failed to stash changes")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("Failed to execute git stash"));
+    }
+    Ok(())
+}
+
+fn stash_pop() -> Result<()> {
+    let status = Command::new("git")
+        .args(&["stash", "pop"])
+        .status()
+        .context("Failed to pop stash")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("Stash pop failed"));
+    }
+    Ok(())
+}
+
+fn pull_rebase() -> Result<()> {
+    let status = Command::new("git")
+        .args(&["pull", "--rebase"])
+        .status()
+        .context("Failed to execute git pull --rebase")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("Rebase failed"));
+    }
+    Ok(())
+}
+
+fn handle_rebase_conflict_loop() -> Result<()> {
+    let term = Term::stdout();
+    let red = Style::new().red();
+    let yellow = Style::new().yellow();
+    let green = Style::new().green();
+
+    loop {
+        term.clear_screen()?;
+        println!("{}", red.apply_to("CONFLICTS DETECTED DURING REBASE"));
+        println!("The following files have merge conflicts:\n");
+
+        let conflicted_files = get_conflicted_files()?;
+        if conflicted_files.is_empty() {
+            println!("{}", green.apply_to("No conflicted files found."));
+        } else {
+            for file in &conflicted_files {
+                print_conflict_details(file)?;
+            }
+        }
+
+        println!("\n{}", yellow.apply_to("Please open the files above, resolve the conflicts, and save them."));
+
+        let choices = vec!["I have resolved the conflicts (Continue)", "Abort Sync"];
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select action")
+            .default(0)
+            .items(&choices)
+            .interact()?;
+
+        if selection == 1 {
+            Command::new("git").args(&["rebase", "--abort"]).status()?;
+            return Err(anyhow::anyhow!("Sync aborted by user"));
+        }
+
+        println!("Staging changes...");
+        Command::new("git").args(&["add", "."]).status()?;
+
+        println!("Continuing rebase...");
+        let status = Command::new("git")
+            .env("GIT_EDITOR", "true") 
+            .args(&["rebase", "--continue"])
+            .status()?;
+
+        if status.success() {
+            println!("{}", green.apply_to("Rebase resolved successfully!"));
+            break;
+        } else {
+            println!("{}", red.apply_to("Rebase continue failed. Conflicts might still exist."));
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_stash_conflict_loop() -> Result<()> {
+    let term = Term::stdout();
+    let red = Style::new().red();
+    let yellow = Style::new().yellow();
+    let green = Style::new().green();
+
+    loop {
+        term.clear_screen()?;
+        println!("{}", red.apply_to("CONFLICTS DETECTED DURING STASH POP"));
+        println!("Your local changes conflict with the incoming updates.\n");
+
+        let conflicted_files = get_conflicted_files()?;
+        for file in &conflicted_files {
+            print_conflict_details(file)?;
+        }
+
+        println!("\n{}", yellow.apply_to("Please resolve the conflicts in the files above."));
+
+        let choices = vec!["I have resolved the conflicts", "Abort (Changes remain in stash list)"];
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select action")
+            .default(0)
+            .items(&choices)
+            .interact()?;
+
+        if selection == 1 {
+            return Err(anyhow::anyhow!("Stash pop cleanup aborted. You may need to reset or drop stash manually."));
+        }
+
+        let remaining_conflicts = get_conflicted_files()?;
+        if remaining_conflicts.is_empty() {
+            println!("{}", green.apply_to("Conflicts resolved."));
+            Command::new("git").args(&["stash", "drop"]).status()?;
+            break;
+        } else {
+            println!("{}", red.apply_to("Conflicts still detected. Please ensure markers are removed."));
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+    }
+
+    Ok(())
+}
+
+fn get_conflicted_files() -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(&["status", "--porcelain"])
+        .output()?;
+    
+    let stdout = String::from_utf8(output.stdout)?;
+    let mut files = Vec::new();
+
+    for line in stdout.lines() {
+        // Look for 'UU', 'AA', 'UD', etc.
+        if line.starts_with("UU") || line.starts_with("AA") || line.starts_with("DU") || line.starts_with("UD") {
+            if line.len() > 3 {
+                files.push(line[3..].to_string());
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+fn print_conflict_details(file_path: &str) -> Result<()> {
+    let path = Path::new(file_path);
+    let cyan = Style::new().cyan();
+    let blue = Style::new().blue();
+    
+    println!("{}", cyan.apply_to(format!("File: {}", file_path)));
+    
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let file = fs::File::open(path)?;
+    let reader = BufReader::new(file);
+    let lines: Vec<String> = reader.lines().map(|l| l.unwrap_or_default()).collect();
+
+    let mut inside_conflict = false;
+    let mut printed_count = 0;
+
+    for (i, line) in lines.iter().enumerate() {
+        if line.starts_with("<<<<<<<") {
+            inside_conflict = true;
+            println!("  {}", blue.apply_to(format!("Line {}: Start of conflict", i + 1)));
+        }
+
+        if inside_conflict {
+            println!("    {}", line);
+        }
+
+        if line.starts_with(">>>>>>>") {
+            inside_conflict = false;
+            println!("  {}", blue.apply_to(format!("Line {}: End of conflict", i + 1)));
+            println!("");
+            printed_count += 1;
+            if printed_count >= 3 {
+                println!("    ... (more conflicts hidden) ...");
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
 ### src/cmd/uninstall.rs
 ```rs
 use anyhow::Result;
@@ -649,7 +1120,7 @@ fn main() -> Result<()> {
 
     match args.command {
         Commands::New { project_name, template } => {
-            cmd::new::run(&project_name, template)?;
+            cmd::new::run(project_name, template)?;
         }
         Commands::Context => {
             cmd::context::run()?;
@@ -657,14 +1128,14 @@ fn main() -> Result<()> {
         Commands::List => {
             cmd::list::run()?;
         }
-        Commands::Add { files } => {
-            cmd::add::run(files)?;
-        }
         Commands::Commit => {
             cmd::commit::run()?;
         }
-        Commands::Push { url } => {
-            cmd::push::run(url)?;
+        Commands::Branch => {
+            cmd::branch::run()?;
+        }
+        Commands::Sync => {
+            cmd::sync::run()?;
         }
         Commands::Reset => {
             cmd::reset::run()?;
