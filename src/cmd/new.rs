@@ -27,10 +27,10 @@ pub fn run(project_name: Option<String>, template_name: Option<String>) -> Resul
     fs::create_dir_all(root_path)?;
 
     Command::new("git")
-        .arg("init")
+        .args(&["init", "-b", "main"])
         .current_dir(root_path)
         .output()
-        .context("Failed to init git")?;
+        .context("Failed to init git with branch main")?;
 
     for (path_str, content) in template.files {
         let full_path = root_path.join(&path_str);
@@ -54,7 +54,7 @@ pub fn run(project_name: Option<String>, template_name: Option<String>) -> Resul
         }
     }
 
-    println!("Project '{}' created successfully.", name);
+    println!("Project '{}' created successfully with 'main' branch.", name);
     Ok(())
 }
 

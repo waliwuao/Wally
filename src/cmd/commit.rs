@@ -154,11 +154,17 @@ fn build_commit_message() -> Result<String> {
 }
 
 fn push_workflow() -> Result<()> {
+    let branch_output = Command::new("git").args(&["branch", "--show-current"]).output()?;
+    let mut current_branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
+
+    if current_branch == "master" {
+        println!("Detected 'master' branch. Renaming to 'main' for compatibility...");
+        Command::new("git").args(&["branch", "-m", "master", "main"]).status()?;
+        current_branch = "main".to_string();
+    }
+
     let remote_output = Command::new("git").args(&["remote"]).output()?;
     let has_remote = !remote_output.stdout.is_empty();
-
-    let branch_output = Command::new("git").args(&["branch", "--show-current"]).output()?;
-    let current_branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
 
     if !has_remote {
         let url: String = Input::with_theme(&ColorfulTheme::default())
