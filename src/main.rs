@@ -28,6 +28,15 @@ fn main() -> Result<()> {
         Commands::Push { url } => {
             cmd::push::run(url)?;
         }
+        Commands::Reset => {
+            cmd::reset::run()?;
+        }
+        Commands::Install { path } => {
+            cmd::install::run(&path)?;
+        }
+        Commands::Uninstall { template_name } => {
+            cmd::uninstall::run(&template_name)?;
+        }
     }
 
     Ok(())

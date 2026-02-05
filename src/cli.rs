@@ -22,7 +22,13 @@ pub enum Commands {
     },
     Commit,
     Push {
-        #[arg(short, long)]
         url: Option<String>,
+    },
+    Reset,
+    Install {
+        path: String,
+    },
+    Uninstall {
+        template_name: String,
     },
 }
