@@ -1,6 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use console::{Style, Term};
-use dialoguer::{theme::ColorfulTheme, Input, Select};
+use dialoguer::{theme::ColorfulTheme, Select};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
