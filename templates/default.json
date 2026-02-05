@@ -1,5 +1,6 @@
 {
   "template_name": "default",
+  "description": "A basic project structure with git, scripts, and temp folders.",
   "files": {
     ".gitignore": "temp/\ntarget/\n**/*.DS_Store\n",
     "src/": "",

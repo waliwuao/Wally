@@ -15,5 +15,5 @@ pub enum Commands {
         template: Option<String>,
     },
     Tree,
-    Pack,
+    List,
 }

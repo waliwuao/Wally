@@ -1,12 +1,11 @@
+use crate::cmd::DEFAULT_TEMPLATE;
+use crate::cmd::tree::run as run_tree;
 use crate::models::ProjectTemplate;
-use crate::cmd::tree::generate_tree_logic;
 use anyhow::{Context, Result};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-
-const DEFAULT_TEMPLATE: &str = include_str!("../../templates/default.json");
 
 pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
     let root_path = Path::new(project_name);
@@ -16,7 +15,9 @@ pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
 
     let template_content = if let Some(t_name) = template_name {
         let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
-        let t_path = PathBuf::from(home).join(".wally/templates").join(format!("{}.json", t_name));
+        let t_path = PathBuf::from(home)
+            .join(".wally/templates")
+            .join(format!("{}.json", t_name));
         fs::read_to_string(t_path).context("Template not found")?
     } else {
         DEFAULT_TEMPLATE.to_string()
@@ -34,8 +35,8 @@ pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
 
     for (path_str, content) in template.files {
         let full_path = root_path.join(&path_str);
-        
-        if path_str.ends_with('/') || content.is_empty() && !path_str.contains('.') {
+
+        if path_str.ends_with('/') || (content.is_empty() && !path_str.contains('.')) {
             fs::create_dir_all(full_path)?;
         } else {
             if let Some(parent) = full_path.parent() {
@@ -54,7 +55,8 @@ pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
         }
     }
 
-    generate_tree_logic(root_path)?;
+    std::env::set_current_dir(root_path)?;
+    run_tree()?;
 
     Ok(())
 }

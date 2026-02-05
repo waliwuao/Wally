@@ -16,8 +16,8 @@ fn main() -> Result<()> {
         Commands::Tree => {
             cmd::tree::run()?;
         }
-        Commands::Pack => {
-            cmd::pack::run()?;
+        Commands::List => {
+            cmd::list::run()?;
         }
     }
 

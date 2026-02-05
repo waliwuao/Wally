@@ -1,15 +1,18 @@
+use crate::models::ProjectTemplate;
 use anyhow::Result;
 use ignore::WalkBuilder;
-use std::collections::HashSet;
-use std::fs;
+use std::collections::{BTreeMap, HashSet};
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
 pub fn run() -> Result<()> {
     let current_dir = std::env::current_dir()?;
-    generate_tree_logic(&current_dir)
+    generate_tree_logic(&current_dir)?;
+    pack_logic(&current_dir)?;
+    Ok(())
 }
 
-pub fn generate_tree_logic(root_path: &Path) -> Result<()> {
+fn generate_tree_logic(root_path: &Path) -> Result<()> {
     let mut allowed_paths = HashSet::new();
     let walker = WalkBuilder::new(root_path)
         .git_ignore(true)
@@ -75,6 +78,62 @@ fn render_directory(
             render_directory(&path, allowed, &child_prefix, output)?;
         }
     }
+
+    Ok(())
+}
+
+fn pack_logic(root_path: &Path) -> Result<()> {
+    let name = root_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    
+    let mut files = BTreeMap::new();
+    
+    let walker = WalkBuilder::new(root_path)
+        .git_ignore(true)
+        .hidden(false)
+        .filter_entry(|e| {
+            let n = e.file_name().to_string_lossy();
+            n != ".git" && n != "info" && n != "target"
+        })
+        .build();
+
+    for result in walker {
+        if let Ok(entry) = result {
+            let path = entry.path();
+            if path == root_path { continue; }
+
+            let relative = path
+                .strip_prefix(root_path)?
+                .to_string_lossy()
+                .replace("\\", "/");
+            
+            if path.is_dir() {
+                let key = if relative.ends_with('/') { relative } else { format!("{}/", relative) };
+                files.insert(key, String::new());
+            } else {
+                if let Ok(content) = fs::read_to_string(path) {
+                    files.insert(relative, content);
+                }
+            }
+        }
+    }
+
+    let template = ProjectTemplate {
+        template_name: name.clone(),
+        description: format!("Template created from project {}", name),
+        files,
+    };
+
+    let info_dir = root_path.join("info");
+    if !info_dir.exists() {
+        fs::create_dir_all(&info_dir)?;
+    }
+    
+    let file = File::create(info_dir.join(format!("{}.json", name)))?;
+    serde_json::to_writer_pretty(file, &template)?;
 
     Ok(())
 }
