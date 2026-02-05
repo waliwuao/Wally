@@ -1,4 +1,5 @@
 pub mod add;
+pub mod branch;
 pub mod commit;
 pub mod context;
 pub mod install;

@@ -39,7 +39,7 @@ pub fn run() -> Result<()> {
     let scope: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Scope (optional)")
         .allow_empty(true)
-        .interact_text()
+        .interact()
         .context("Failed to read scope")?;
 
     let subject: String = Input::with_theme(&ColorfulTheme::default())
@@ -51,13 +51,13 @@ pub fn run() -> Result<()> {
                 Ok(())
             }
         })
-        .interact_text()
+        .interact()
         .context("Failed to read subject")?;
 
     let body: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Body (detailed description, optional)")
         .allow_empty(true)
-        .interact_text()
+        .interact()
         .context("Failed to read body")?;
 
     let mut message = if scope.trim().is_empty() {

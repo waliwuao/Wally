@@ -28,6 +28,9 @@ fn main() -> Result<()> {
         Commands::Push { url } => {
             cmd::push::run(url)?;
         }
+        Commands::Branch => {
+            cmd::branch::run()?;
+        }
         Commands::Reset => {
             cmd::reset::run()?;
         }

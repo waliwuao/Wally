@@ -24,6 +24,7 @@ pub enum Commands {
     Push {
         url: Option<String>,
     },
+    Branch,
     Reset,
     Install {
         path: String,
