@@ -157,20 +157,21 @@ fn push_workflow() -> Result<()> {
     let remote_output = Command::new("git").args(&["remote"]).output()?;
     let has_remote = !remote_output.stdout.is_empty();
 
+    let branch_output = Command::new("git").args(&["branch", "--show-current"]).output()?;
+    let current_branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
+
     if !has_remote {
         let url: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("No remote found. Enter remote URL to add origin")
             .interact_text()?;
         
         Command::new("git").args(&["remote", "add", "origin", &url]).status()?;
-        Command::new("git").args(&["push", "-u", "origin", "main"]).status()?;
+        Command::new("git").args(&["push", "-u", "origin", &current_branch]).status()?;
     } else {
         let status = Command::new("git").arg("push").status()?;
         if !status.success() {
             println!("Standard push failed. Trying to set upstream...");
-            let branch_output = Command::new("git").args(&["branch", "--show-current"]).output()?;
-            let branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
-            Command::new("git").args(&["push", "-u", "origin", &branch]).status()?;
+            Command::new("git").args(&["push", "-u", "origin", &current_branch]).status()?;
         }
     }
     Ok(())
