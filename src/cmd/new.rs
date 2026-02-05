@@ -1,5 +1,4 @@
 use crate::cmd::DEFAULT_TEMPLATE;
-use crate::cmd::tree::run as run_tree;
 use crate::models::ProjectTemplate;
 use anyhow::{Context, Result};
 use std::fs::{self, File};
@@ -55,8 +54,7 @@ pub fn run(project_name: &str, template_name: Option<String>) -> Result<()> {
         }
     }
 
-    std::env::set_current_dir(root_path)?;
-    run_tree()?;
+    println!("Project '{}' created successfully.", project_name);
 
     Ok(())
 }

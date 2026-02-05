@@ -1,11 +1,11 @@
 {
   "template_name": "default",
-  "description": "A basic project structure with git, scripts, and temp folders.",
+  "description": "A basic project structure with git and temp folders.",
   "files": {
-    ".gitignore": "temp/\ntarget/\n**/*.DS_Store\n",
+    ".gitignore": "temp/\ntarget/\n**/*.DS_Store\ninfo/\n",
     "src/": "",
     "temp/": "",
     "info/": "",
-    "script/push.sh": "#!/bin/bash\ngit remote add origin <your_remote_url>\ngit add .\ngit commit -m \"auto push\"\ngit push -u origin main"
+    "script/": ""
   }
 }

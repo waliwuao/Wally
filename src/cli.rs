@@ -14,7 +14,7 @@ pub enum Commands {
         #[arg(short, long)]
         template: Option<String>,
     },
-    Tree,
+    Context,
     List,
     Add {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]

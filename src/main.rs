@@ -13,8 +13,8 @@ fn main() -> Result<()> {
         Commands::New { project_name, template } => {
             cmd::new::run(&project_name, template)?;
         }
-        Commands::Tree => {
-            cmd::tree::run()?;
+        Commands::Context => {
+            cmd::context::run()?;
         }
         Commands::List => {
             cmd::list::run()?;
