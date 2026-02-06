@@ -24,8 +24,8 @@ pub fn run() -> Result<()> {
 
         let categories = vec![
             exit_style.apply_to("Exit Help").to_string(),
-            format!("Project Setup ({})", setup_list),
-            format!("Git Operations ({})", dev_list),
+            format!("Project Setup       ({})", setup_list),
+            format!("Git Operations      ({})", dev_list),
             format!("Template Management ({})", tmpl_list),
         ];
 
