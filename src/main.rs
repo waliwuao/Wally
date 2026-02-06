@@ -34,6 +34,9 @@ fn main() -> Result<()> {
         Some(Commands::Stats) => {
             cmd::stats::run()?;
         }
+        Some(Commands::Tag) => {
+            cmd::tag::run()?;
+        }
         Some(Commands::Install { path }) => {
             cmd::install::run(&path)?;
         }

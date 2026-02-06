@@ -7,6 +7,7 @@ pub mod list;
 pub mod new;
 pub mod reset;
 pub mod stats;
+pub mod tag;
 pub mod update;
 pub mod uninstall;
 

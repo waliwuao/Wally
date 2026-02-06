@@ -21,6 +21,7 @@ pub enum Commands {
     Update,
     Reset,
     Stats,
+    Tag,
     Install {
         path: String,
     },

@@ -15,7 +15,7 @@ pub fn run() -> Result<()> {
 
     loop {
         term.clear_screen()?;
-        println!("{}", header_style.apply_to("--- Wally Help ---"));
+        println!("{}", header_style.apply_to("--- Wally Interactive Help ---"));
         println!("Select a category to explore commands:\n");
 
         let setup_list = get_setup_cmds().iter().map(|c| c.name).collect::<Vec<_>>().join(", ");
@@ -123,7 +123,7 @@ fn get_dev_cmds() -> Vec<CmdInfo> {
         CmdInfo {
             name: "branch",
             usage: "wally branch",
-            desc: "Manage branches interactively: switch, create with prefixes (feat/fix), merge, or delete safely.",
+            desc: "Manage branches interactively: switch, create, merge, squash, or delete safely.",
         },
         CmdInfo {
             name: "reset",
@@ -134,6 +134,11 @@ fn get_dev_cmds() -> Vec<CmdInfo> {
             name: "stats",
             usage: "wally stats",
             desc: "Shows project activity: recent commit frequency, line changes, and most modified files.",
+        },
+        CmdInfo {
+            name: "tag",
+            usage: "wally tag",
+            desc: "Automated semantic versioning: calculates and pushes the next tag (Major/Minor/Patch).",
         },
     ]
 }
