@@ -10,34 +10,37 @@ fn main() -> Result<()> {
     let args = Cli::parse();
 
     match args.command {
-        Commands::New { project_name, template } => {
+        Some(Commands::New { project_name, template }) => {
             cmd::new::run(project_name, template)?;
         }
-        Commands::Context => {
+        Some(Commands::Context) => {
             cmd::context::run()?;
         }
-        Commands::List => {
+        Some(Commands::List) => {
             cmd::list::run()?;
         }
-        Commands::Commit => {
+        Some(Commands::Commit) => {
             cmd::commit::run()?;
         }
-        Commands::Branch => {
+        Some(Commands::Branch) => {
             cmd::branch::run()?;
         }
-        Commands::Update => {
+        Some(Commands::Update) => {
             cmd::update::run()?;
         }
-        Commands::Reset => {
+        Some(Commands::Reset) => {
             cmd::reset::run()?;
         }
-        Commands::Install { path } => {
+        Some(Commands::Install { path }) => {
             cmd::install::run(&path)?;
         }
-        Commands::Uninstall { template_name } => {
+        Some(Commands::Uninstall { template_name }) => {
             cmd::uninstall::run(&template_name)?;
         }
-        Commands::Help => {
+        Some(Commands::Help) => {
+            cmd::help::run()?;
+        }
+        None => {
             cmd::help::run()?;
         }
     }
