@@ -1,2 +1,101 @@
-# Wally
-This is a Rust-based command-line tool designed to assist with Git version control, while also integrating template management functionality.
+# Wally - 规范化 Git 命令行工具集
+
+Wally 是一个基于 Rust 开发的 Git 助手，旨在通过抽象复杂的 Git 指令来建立标准化的交互式工作流。它专注于强制执行开发规范、保持线性的提交历史，并为 AI 辅助开发提供高效的上下文管理。
+
+---
+
+## 核心功能
+
+*   **自动化安全同步**：在更新远程代码时，自动完成工作区暂存（Stash）、线性合并（Rebase）和工作区恢复（Pop）。
+*   **约定式提交**：引导用户按照 Conventional Commits 规范进行文件暂存和提交信息撰写。
+*   **AI 开发支持**：一键生成项目元数据和合并后的源代码文件，优化大语言模型（LLM）的分析效率。
+*   **交互式分支管理**：简化分支的生命周期管理，包括带前缀的分支创建、快速切换及安全删除。
+*   **项目模板系统**：通过自定义 JSON 模板快速初始化具备 Git 环境的标准化项目。
+
+---
+
+## 安装说明
+
+### 环境要求
+
+*   已安装 Rust 编译环境 (Cargo)
+*   系统中已安装 Git
+
+### 编译与安装
+
+在项目根目录下执行：
+
+```bash
+cargo install --path .
+```
+
+---
+
+## 命令指南
+
+你可以直接输入 `wally` 或 `wally help` 进入交互式帮助菜单。
+
+### 1. 项目初始化 (Project Setup)
+
+*   **`wally new [项目名]`**
+    从预设模板初始化仓库，并强制设置 `main` 为默认分支。若未提供参数，将启动交互式向导。
+*   **`wally context`**
+    扫描当前项目并生成 `info/context.md`。该文件整合了目录树和所有追踪文件的源码，方便直接提供给 AI 助手进行代码分析。
+
+### 2. 日常开发与同步 (Development & Sync)
+
+*   **`wally update`**
+    执行最安全的同步流程：
+    1. 自动检测并暂存未提交的修改。
+    2. 自动处理 `master` 到 `main` 的重命名映射。
+    3. 使用 `--rebase` 模式拉取远程代码，确保提交历史不产生分叉。
+    4. 还原暂存修改，并提供交互式冲突修复引导。
+*   **`wally commit`**
+    全能提交助手：
+    1. 交互式选择暂存文件（支持一键全选）。
+    2. 按照类型（feat, fix, docs等）、范围、描述、正文的顺序构建规范化消息。
+    3. 自动询问并执行推送（Push）操作。
+*   **`wally branch`**
+    交互式分支管理。支持创建规范化前缀分支，一键切换分支，或批量清理已合并的旧分支。
+*   **`wally reset`**
+    可视化回滚。展示最近 20 条提交记录，用户选择后将执行强制重置（HARD reset）。
+
+### 3. 模板管理 (Template Management)
+
+*   **`wally list`**：列出系统中所有已安装的项目模板及其描述。
+*   **`wally install [文件路径]`**：从本地 JSON 文件导入新的自定义项目模板。
+*   **`wally uninstall [模板名]`**：从系统中移除特定的自定义模板。
+
+---
+
+## 模板配置参考
+
+Wally 使用 JSON 格式定义模板。以下是一个标准的模板结构示例：
+
+```json
+{
+  "template_name": "rust-basic",
+  "description": "基础 Rust 项目结构",
+  "files": {
+    "Cargo.toml": "[package]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nedition = \"2021\"",
+    "src/main.rs": "fn main() {\n    println!(\"Hello, world!\");\n}",
+    ".gitignore": "target/\nCargo.lock",
+    "README.md": "# 项目标题"
+  }
+}
+```
+
+---
+
+## 设计哲学
+
+1.  **线性历史**：Wally 强制在更新时使用 `rebase` 而非 `merge`，确保项目演进历史是一条直线，便于后期代码追溯和 Debug。
+2.  **工作区保护**：通过自动化的 `stash` 操作，避免了初学者常遇到的“工作区不干净无法拉取代码”的报错困扰。
+3.  **降低认知负担**：将复杂的 Git 组合指令转化为直观的选择题和填空题，使用户专注于代码开发而非 Git 命令细节。
+4.  **适配现代标准**：原生支持 `main` 分支命名约定和 Conventional Commits 规范，使本地开发直接对接企业级工业标准。
+
+---
+
+## 许可证
+
+Copyright (c) 2024. 保留所有权利。依据项目授权条款分发。
