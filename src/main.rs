@@ -31,6 +31,9 @@ fn main() -> Result<()> {
         Some(Commands::Reset) => {
             cmd::reset::run()?;
         }
+        Some(Commands::Stats) => {
+            cmd::stats::run()?;
+        }
         Some(Commands::Install { path }) => {
             cmd::install::run(&path)?;
         }

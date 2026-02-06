@@ -20,6 +20,7 @@ pub enum Commands {
     Branch,
     Update,
     Reset,
+    Stats,
     Install {
         path: String,
     },

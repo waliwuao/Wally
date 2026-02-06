@@ -15,7 +15,7 @@ pub fn run() -> Result<()> {
 
     loop {
         term.clear_screen()?;
-        println!("{}", header_style.apply_to("--- Wally Interactive Help ---"));
+        println!("{}", header_style.apply_to("--- Wally Help ---"));
         println!("Select a category to explore commands:\n");
 
         let setup_list = get_setup_cmds().iter().map(|c| c.name).collect::<Vec<_>>().join(", ");
@@ -24,9 +24,9 @@ pub fn run() -> Result<()> {
 
         let categories = vec![
             exit_style.apply_to("Exit Help").to_string(),
-            format!("Project Setup       ({})", setup_list),
-            format!("Git Operations      ({})", dev_list),
-            format!("Template Management ({})", tmpl_list),
+            format!("Project Setup         ({})", setup_list),
+            format!("Git Operations        ({})", dev_list),
+            format!("Template Management   ({})", tmpl_list),
         ];
 
         let selection = Select::with_theme(&ColorfulTheme::default())
@@ -123,12 +123,17 @@ fn get_dev_cmds() -> Vec<CmdInfo> {
         CmdInfo {
             name: "branch",
             usage: "wally branch",
-            desc: "Manage branches interactively: switch, create with prefixes (feat/fix), or delete safely.",
+            desc: "Manage branches interactively: switch, create with prefixes (feat/fix), merge, or delete safely.",
         },
         CmdInfo {
             name: "reset",
             usage: "wally reset",
-            desc: "Choose from the last 20 commits to perform a HARD reset. All uncommitted changes will be lost.",
+            desc: "Provides options to undo recent actions (reflog) or reset to a specific commit (log).",
+        },
+        CmdInfo {
+            name: "stats",
+            usage: "wally stats",
+            desc: "Shows project activity: recent commit frequency, line changes, and most modified files.",
         },
     ]
 }
