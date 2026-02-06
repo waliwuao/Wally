@@ -7,6 +7,7 @@ pub fn run() -> Result<()> {
         "Switch Branch",
         "Create Branch",
         "Merge  Branch",
+        "Squash Commits",
         "Delete Branch",
     ];
 
@@ -21,7 +22,8 @@ pub fn run() -> Result<()> {
         0 => switch_branch(),
         1 => create_branch(),
         2 => merge_branch(),
-        3 => delete_branch(),
+        3 => squash_commits(),
+        4 => delete_branch(),
         _ => Ok(()),
     }
 }
@@ -142,6 +144,55 @@ fn merge_branch() -> Result<()> {
         return Err(anyhow::anyhow!(
             "Merge failed (likely due to conflicts). Please resolve conflicts manually."
         ));
+    }
+
+    Ok(())
+}
+
+fn squash_commits() -> Result<()> {
+    let current = get_current_branch()?;
+    let branches = get_branches()?;
+    
+    let base_branches: Vec<String> = branches
+        .into_iter()
+        .filter(|b| b == "main" || b == "master" || b == "develop")
+        .collect();
+
+    if base_branches.is_empty() {
+        return Err(anyhow::anyhow!("No base branch (main/master/develop) found to squash against."));
+    }
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select base branch to squash against")
+        .items(&base_branches)
+        .default(0)
+        .interact()?;
+
+    let base = &base_branches[selection];
+
+    if current == *base {
+        return Err(anyhow::anyhow!("Cannot squash on the base branch itself. Switch to a feature branch."));
+    }
+
+    let merge_base_out = Command::new("git")
+        .args(&["merge-base", base, &current])
+        .output()?;
+    
+    let merge_base = String::from_utf8(merge_base_out.stdout)?.trim().to_string();
+
+    if merge_base.is_empty() {
+        return Err(anyhow::anyhow!("Could not find a common ancestor with {}", base));
+    }
+
+    println!("Squashing all commits from {}... All changes will be staged.", merge_base);
+
+    let status = Command::new("git")
+        .args(&["reset", "--soft", &merge_base])
+        .status()?;
+
+    if status.success() {
+        println!("\nSuccess! All changes from your feature branch are now staged as a single block.");
+        println!("Use 'wally commit' now to create a clean, single commit message.");
     }
 
     Ok(())
