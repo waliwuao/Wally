@@ -19,6 +19,10 @@ Wally 是一个基于 Rust 开发的 Git 助手，旨在通过抽象复杂的 Gi
 ### 环境要求
 
 *   已安装 Rust 编译环境 (Cargo)
+```bash
+curl https://sh.rustup.rs -sSf | sh
+
+```
 *   系统中已安装 Git
 
 ### 编译与安装
