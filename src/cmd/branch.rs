@@ -3,8 +3,13 @@ use dialoguer::{theme::ColorfulTheme, Input, MultiSelect, Select};
 use std::process::Command;
 
 pub fn run() -> Result<()> {
-    let actions = vec!["Switch Branch", "Create New Branch", "Delete Branch"];
-    
+    let actions = vec![
+        "Switch Branch",
+        "Create Branch",
+        "Merge  Branch",
+        "Delete Branch",
+    ];
+
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select branch action")
         .default(0)
@@ -15,7 +20,8 @@ pub fn run() -> Result<()> {
     match selection {
         0 => switch_branch(),
         1 => create_branch(),
-        2 => delete_branch(),
+        2 => merge_branch(),
+        3 => delete_branch(),
         _ => Ok(()),
     }
 }
@@ -56,8 +62,10 @@ fn switch_branch() -> Result<()> {
 }
 
 fn create_branch() -> Result<()> {
-    let types = vec!["feat", "fix", "chore", "docs", "refactor", "style", "test", "other"];
-    
+    let types = vec![
+        "feat", "fix", "chore", "docs", "refactor", "style", "test", "other",
+    ];
+
     let type_selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select branch type")
         .default(0)
@@ -99,10 +107,50 @@ fn create_branch() -> Result<()> {
     Ok(())
 }
 
+fn merge_branch() -> Result<()> {
+    let current = get_current_branch()?;
+    let branches = get_branches()?;
+
+    let available_to_merge: Vec<String> = branches
+        .into_iter()
+        .filter(|b| b != &current)
+        .collect();
+
+    if available_to_merge.is_empty() {
+        println!("No other branches available to merge.");
+        return Ok(());
+    }
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Select branch to merge INTO '{}'", current))
+        .items(&available_to_merge)
+        .interact()
+        .context("Failed to select branch to merge")?;
+
+    let branch_to_merge = &available_to_merge[selection];
+
+    println!("Merging '{}' into '{}'...", branch_to_merge, current);
+
+    let status = Command::new("git")
+        .args(&["merge", branch_to_merge])
+        .status()
+        .context("Failed to execute git merge")?;
+
+    if status.success() {
+        println!("Successfully merged '{}'", branch_to_merge);
+    } else {
+        return Err(anyhow::anyhow!(
+            "Merge failed (likely due to conflicts). Please resolve conflicts manually."
+        ));
+    }
+
+    Ok(())
+}
+
 fn delete_branch() -> Result<()> {
     let current = get_current_branch()?;
     let branches = get_branches()?;
-    
+
     let available_to_delete: Vec<String> = branches
         .into_iter()
         .filter(|b| b != &current)

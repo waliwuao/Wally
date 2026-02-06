@@ -6,19 +6,22 @@
 wally/
 ├── .gitignore
 ├── Cargo.toml
+├── LICENSE
+├── README.md
 ├── src/
 │   ├── cli.rs
 │   ├── cmd/
 │   │   ├── branch.rs
 │   │   ├── commit.rs
 │   │   ├── context.rs
+│   │   ├── help.rs
 │   │   ├── install.rs
 │   │   ├── list.rs
 │   │   ├── mod.rs
 │   │   ├── new.rs
 │   │   ├── reset.rs
-│   │   ├── sync.rs
-│   │   └── uninstall.rs
+│   │   ├── uninstall.rs
+│   │   └── update.rs
 │   ├── main.rs
 │   └── models.rs
 └── templates/
@@ -51,6 +54,130 @@ dialoguer = "0.11"
 console = "0.15"
 ```
 
+### LICENSE
+```
+MIT License
+
+Copyright (c) 2026 waliwuao
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+### README.md
+```md
+# Wally - 规范化 Git 命令行工具集
+
+Wally 是一个基于 Rust 开发的 Git 助手，旨在通过抽象复杂的 Git 指令来建立标准化的交互式工作流。它专注于强制执行开发规范、保持线性的提交历史。
+
+---
+
+## 核心功能
+
+*   **自动化安全同步**：在更新远程代码时，自动完成工作区暂存（Stash）、线性合并（Rebase）和工作区恢复（Pop）。
+*   **约定式提交**：引导用户按照 Conventional Commits 规范进行文件暂存和提交信息撰写。
+*   **交互式分支管理**：简化分支的生命周期管理，包括带前缀的分支创建、快速切换及安全删除。
+*   **项目模板系统**：通过自定义 JSON 模板快速初始化具备 Git 环境的标准化项目。
+
+---
+
+## 安装说明
+
+### 环境要求
+
+*   已安装 Rust 编译环境 (Cargo)
+*   系统中已安装 Git
+
+### 编译与安装
+
+在项目根目录下执行：
+
+```bash
+cargo install --path .
+```
+
+---
+
+## 命令指南
+
+你可以直接输入 `wally` 或 `wally help` 进入交互式帮助菜单。
+
+### 1. 项目初始化 (Project Setup)
+
+*   **`wally new [项目名]`**
+    从预设模板初始化仓库，并强制设置 `main` 为默认分支。若未提供参数，将启动交互式向导。
+*   **`wally context`**
+    扫描当前项目并生成 `info/context.md`。该文件整合了目录树和所有追踪文件的源码，方便直接提供给 AI 助手进行代码分析。
+
+### 2. 日常开发与同步 (Development & Sync)
+
+*   **`wally update`**
+    执行最安全的同步流程：
+    1. 自动检测并暂存未提交的修改。
+    2. 自动处理 `master` 到 `main` 的重命名映射。
+    3. 使用 `--rebase` 模式拉取远程代码，确保提交历史不产生分叉。
+    4. 还原暂存修改，并提供交互式冲突修复引导。
+*   **`wally commit`**
+    全能提交助手：
+    1. 交互式选择暂存文件（支持一键全选）。
+    2. 按照类型（feat, fix, docs等）、范围、描述、正文的顺序构建规范化消息。
+    3. 自动询问并执行推送（Push）操作。
+*   **`wally branch`**
+    交互式分支管理。支持创建规范化前缀分支，一键切换分支，或批量清理已合并的旧分支。
+*   **`wally reset`**
+    可视化回滚。展示最近 20 条提交记录，用户选择后将执行强制重置（HARD reset）。
+
+### 3. 模板管理 (Template Management)
+
+*   **`wally list`**：列出系统中所有已安装的项目模板及其描述。
+*   **`wally install [文件路径]`**：从本地 JSON 文件导入新的自定义项目模板。
+*   **`wally uninstall [模板名]`**：从系统中移除特定的自定义模板。
+
+---
+
+## 模板配置参考
+
+Wally 使用 JSON 格式定义模板。以下是一个标准的模板结构示例：
+
+```json
+{
+  "template_name": "rust-basic",
+  "description": "基础 Rust 项目结构",
+  "files": {
+    "Cargo.toml": "[package]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nedition = \"2021\"",
+    "src/main.rs": "fn main() {\n    println!(\"Hello, world!\");\n}",
+    ".gitignore": "target/\nCargo.lock",
+    "README.md": "# 项目标题"
+  }
+}
+```
+
+---
+
+## 设计哲学
+
+1.  **线性历史**：Wally 强制在更新时使用 `rebase` 而非 `merge`，确保项目演进历史是一条直线，便于后期代码追溯和 Debug。
+2.  **工作区保护**：通过自动化的 `stash` 操作，避免了初学者常遇到的“工作区不干净无法拉取代码”的报错困扰。
+3.  **降低认知负担**：将复杂的 Git 组合指令转化为直观的选择题和填空题，使用户专注于代码开发而非 Git 命令细节。
+
+```
+
 ### src/cli.rs
 ```rs
 use clap::{Parser, Subcommand};
@@ -59,7 +186,7 @@ use clap::{Parser, Subcommand};
 #[command(name = "wally")]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -73,7 +200,7 @@ pub enum Commands {
     List,
     Commit,
     Branch,
-    Sync,
+    Update,
     Reset,
     Install {
         path: String,
@@ -81,6 +208,7 @@ pub enum Commands {
     Uninstall {
         template_name: String,
     },
+    Help,
 }
 ```
 
@@ -407,6 +535,15 @@ fn build_commit_message() -> Result<String> {
 }
 
 fn push_workflow() -> Result<()> {
+    let branch_output = Command::new("git").args(&["branch", "--show-current"]).output()?;
+    let mut current_branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
+
+    if current_branch == "master" {
+        println!("Detected 'master' branch. Renaming to 'main' for compatibility...");
+        Command::new("git").args(&["branch", "-m", "master", "main"]).status()?;
+        current_branch = "main".to_string();
+    }
+
     let remote_output = Command::new("git").args(&["remote"]).output()?;
     let has_remote = !remote_output.stdout.is_empty();
 
@@ -416,14 +553,12 @@ fn push_workflow() -> Result<()> {
             .interact_text()?;
         
         Command::new("git").args(&["remote", "add", "origin", &url]).status()?;
-        Command::new("git").args(&["push", "-u", "origin", "main"]).status()?;
+        Command::new("git").args(&["push", "-u", "origin", &current_branch]).status()?;
     } else {
         let status = Command::new("git").arg("push").status()?;
         if !status.success() {
             println!("Standard push failed. Trying to set upstream...");
-            let branch_output = Command::new("git").args(&["branch", "--show-current"]).output()?;
-            let branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
-            Command::new("git").args(&["push", "-u", "origin", &branch]).status()?;
+            Command::new("git").args(&["push", "-u", "origin", &current_branch]).status()?;
         }
     }
     Ok(())
@@ -557,6 +692,164 @@ fn render_tree(
 }
 ```
 
+### src/cmd/help.rs
+```rs
+use anyhow::Result;
+use console::{Style, Term};
+use dialoguer::{theme::ColorfulTheme, Select};
+
+struct CmdInfo {
+    name: &'static str,
+    usage: &'static str,
+    desc: &'static str,
+}
+
+pub fn run() -> Result<()> {
+    let term = Term::stdout();
+    let header_style = Style::new().cyan().bold();
+    let exit_style = Style::new().red();
+
+    loop {
+        term.clear_screen()?;
+        println!("{}", header_style.apply_to("--- Wally Interactive Help ---"));
+        println!("Select a category to explore commands:\n");
+
+        let setup_list = get_setup_cmds().iter().map(|c| c.name).collect::<Vec<_>>().join(", ");
+        let dev_list = get_dev_cmds().iter().map(|c| c.name).collect::<Vec<_>>().join(", ");
+        let tmpl_list = get_tmpl_cmds().iter().map(|c| c.name).collect::<Vec<_>>().join(", ");
+
+        let categories = vec![
+            exit_style.apply_to("Exit Help").to_string(),
+            format!("Project Setup ({})", setup_list),
+            format!("Git Operations ({})", dev_list),
+            format!("Template Management ({})", tmpl_list),
+        ];
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .items(&categories)
+            .default(0)
+            .interact()?;
+
+        match selection {
+            0 => break,
+            1 => show_category_menu("Project Setup", get_setup_cmds())?,
+            2 => show_category_menu("Git Operations", get_dev_cmds())?,
+            3 => show_category_menu("Template Management", get_tmpl_cmds())?,
+            _ => break,
+        }
+    }
+
+    Ok(())
+}
+
+fn show_category_menu(cat_name: &str, cmds: Vec<CmdInfo>) -> Result<()> {
+    let term = Term::stdout();
+    let cat_style = Style::new().cyan().bold();
+    let back_style = Style::new().blue();
+
+    loop {
+        term.clear_screen()?;
+        println!("{}", cat_style.apply_to(format!("--- {} ---", cat_name)));
+        
+        let mut items: Vec<String> = vec![back_style.apply_to("Back to Main Menu").to_string()];
+        items.extend(cmds.iter().map(|c| c.name.to_string()));
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select a command for details")
+            .items(&items)
+            .default(0)
+            .interact()?;
+
+        if selection == 0 {
+            break;
+        }
+
+        show_cmd_detail(&cmds[selection - 1])?;
+    }
+    Ok(())
+}
+
+fn show_cmd_detail(cmd: &CmdInfo) -> Result<()> {
+    let term = Term::stdout();
+    let cmd_style = Style::new().yellow().bold();
+    let label_style = Style::new().dim();
+    let back_style = Style::new().blue();
+
+    term.clear_screen()?;
+    println!("{}", cmd_style.apply_to(format!("Command: {}", cmd.name)));
+    println!("\n{} {}", label_style.apply_to("Description:"), cmd.desc);
+    println!("{} {}", label_style.apply_to("Usage:      "), cmd.usage);
+
+    println!("\n");
+    let _ = Select::with_theme(&ColorfulTheme::default())
+        .items(&[back_style.apply_to("Back").to_string()])
+        .default(0)
+        .interact()?;
+
+    Ok(())
+}
+
+fn get_setup_cmds() -> Vec<CmdInfo> {
+    vec![
+        CmdInfo {
+            name: "new",
+            usage: "wally new [project_name] [--template name]",
+            desc: "Initialize a new project. If parameters are missing, it starts an interactive wizard.",
+        },
+        CmdInfo {
+            name: "context",
+            usage: "wally context",
+            desc: "Scans the project and creates 'info/context.md' containing the file tree and code for AI analysis.",
+        },
+    ]
+}
+
+fn get_dev_cmds() -> Vec<CmdInfo> {
+    vec![
+        CmdInfo {
+            name: "update",
+            usage: "wally update",
+            desc: "Sync with remote safely: stashes work, pulls with rebase, and restores work automatically.",
+        },
+        CmdInfo {
+            name: "commit",
+            usage: "wally commit",
+            desc: "Unified helper: choose files to stage, write standardized commit messages, and push to remote.",
+        },
+        CmdInfo {
+            name: "branch",
+            usage: "wally branch",
+            desc: "Manage branches interactively: switch, create with prefixes (feat/fix), or delete safely.",
+        },
+        CmdInfo {
+            name: "reset",
+            usage: "wally reset",
+            desc: "Choose from the last 20 commits to perform a HARD reset. All uncommitted changes will be lost.",
+        },
+    ]
+}
+
+fn get_tmpl_cmds() -> Vec<CmdInfo> {
+    vec![
+        CmdInfo {
+            name: "list",
+            usage: "wally list",
+            desc: "Shows all project templates currently available in your system.",
+        },
+        CmdInfo {
+            name: "install",
+            usage: "wally install <file.json>",
+            desc: "Adds a new custom project template from a local JSON configuration file.",
+        },
+        CmdInfo {
+            name: "uninstall",
+            usage: "wally uninstall <template_name>",
+            desc: "Removes a previously installed custom template from the system.",
+        },
+    ]
+}
+```
+
 ### src/cmd/install.rs
 ```rs
 use crate::models::ProjectTemplate;
@@ -665,11 +958,12 @@ fn print_row(name: &str, desc: &str) {
 pub mod branch;
 pub mod commit;
 pub mod context;
+pub mod help;
 pub mod install;
 pub mod list;
 pub mod new;
 pub mod reset;
-pub mod sync;
+pub mod update;
 pub mod uninstall;
 
 pub const DEFAULT_TEMPLATE: &str = include_str!("../../templates/default.json");
@@ -706,10 +1000,10 @@ pub fn run(project_name: Option<String>, template_name: Option<String>) -> Resul
     fs::create_dir_all(root_path)?;
 
     Command::new("git")
-        .arg("init")
+        .args(&["init", "-b", "main"])
         .current_dir(root_path)
         .output()
-        .context("Failed to init git")?;
+        .context("Failed to init git with branch main")?;
 
     for (path_str, content) in template.files {
         let full_path = root_path.join(&path_str);
@@ -733,7 +1027,7 @@ pub fn run(project_name: Option<String>, template_name: Option<String>) -> Resul
         }
     }
 
-    println!("Project '{}' created successfully.", name);
+    println!("Project '{}' created successfully with 'main' branch.", name);
     Ok(())
 }
 
@@ -836,249 +1130,6 @@ pub fn run() -> Result<()> {
 }
 ```
 
-### src/cmd/sync.rs
-```rs
-use anyhow::{Context, Result};
-use console::{Style, Term};
-use dialoguer::{theme::ColorfulTheme, Select};
-use std::fs;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::process::Command;
-
-pub fn run() -> Result<()> {
-    let has_changes = check_if_dirty()?;
-    let mut stashed = false;
-
-    if has_changes {
-        println!("Local changes detected. Stashing...");
-        stash_push()?;
-        stashed = true;
-    }
-
-    println!("Fetching and rebasing...");
-    if let Err(_) = pull_rebase() {
-        handle_rebase_conflict_loop()?;
-    }
-
-    if stashed {
-        println!("Restoring local changes...");
-        if let Err(_) = stash_pop() {
-            handle_stash_conflict_loop()?;
-        }
-    }
-
-    println!("Sync completed successfully.");
-    Ok(())
-}
-
-fn check_if_dirty() -> Result<bool> {
-    let output = Command::new("git")
-        .args(&["status", "--porcelain"])
-        .output()
-        .context("Failed to check git status")?;
-
-    Ok(!output.stdout.is_empty())
-}
-
-fn stash_push() -> Result<()> {
-    let status = Command::new("git")
-        .args(&["stash", "push", "-m", "wally-auto-sync"])
-        .status()
-        .context("Failed to stash changes")?;
-
-    if !status.success() {
-        return Err(anyhow::anyhow!("Failed to execute git stash"));
-    }
-    Ok(())
-}
-
-fn stash_pop() -> Result<()> {
-    let status = Command::new("git")
-        .args(&["stash", "pop"])
-        .status()
-        .context("Failed to pop stash")?;
-
-    if !status.success() {
-        return Err(anyhow::anyhow!("Stash pop failed"));
-    }
-    Ok(())
-}
-
-fn pull_rebase() -> Result<()> {
-    let status = Command::new("git")
-        .args(&["pull", "--rebase"])
-        .status()
-        .context("Failed to execute git pull --rebase")?;
-
-    if !status.success() {
-        return Err(anyhow::anyhow!("Rebase failed"));
-    }
-    Ok(())
-}
-
-fn handle_rebase_conflict_loop() -> Result<()> {
-    let term = Term::stdout();
-    let red = Style::new().red();
-    let yellow = Style::new().yellow();
-    let green = Style::new().green();
-
-    loop {
-        term.clear_screen()?;
-        println!("{}", red.apply_to("CONFLICTS DETECTED DURING REBASE"));
-        println!("The following files have merge conflicts:\n");
-
-        let conflicted_files = get_conflicted_files()?;
-        if conflicted_files.is_empty() {
-            println!("{}", green.apply_to("No conflicted files found."));
-        } else {
-            for file in &conflicted_files {
-                print_conflict_details(file)?;
-            }
-        }
-
-        println!("\n{}", yellow.apply_to("Please open the files above, resolve the conflicts, and save them."));
-
-        let choices = vec!["I have resolved the conflicts (Continue)", "Abort Sync"];
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select action")
-            .default(0)
-            .items(&choices)
-            .interact()?;
-
-        if selection == 1 {
-            Command::new("git").args(&["rebase", "--abort"]).status()?;
-            return Err(anyhow::anyhow!("Sync aborted by user"));
-        }
-
-        println!("Staging changes...");
-        Command::new("git").args(&["add", "."]).status()?;
-
-        println!("Continuing rebase...");
-        let status = Command::new("git")
-            .env("GIT_EDITOR", "true") 
-            .args(&["rebase", "--continue"])
-            .status()?;
-
-        if status.success() {
-            println!("{}", green.apply_to("Rebase resolved successfully!"));
-            break;
-        } else {
-            println!("{}", red.apply_to("Rebase continue failed. Conflicts might still exist."));
-            std::thread::sleep(std::time::Duration::from_secs(2));
-        }
-    }
-
-    Ok(())
-}
-
-fn handle_stash_conflict_loop() -> Result<()> {
-    let term = Term::stdout();
-    let red = Style::new().red();
-    let yellow = Style::new().yellow();
-    let green = Style::new().green();
-
-    loop {
-        term.clear_screen()?;
-        println!("{}", red.apply_to("CONFLICTS DETECTED DURING STASH POP"));
-        println!("Your local changes conflict with the incoming updates.\n");
-
-        let conflicted_files = get_conflicted_files()?;
-        for file in &conflicted_files {
-            print_conflict_details(file)?;
-        }
-
-        println!("\n{}", yellow.apply_to("Please resolve the conflicts in the files above."));
-
-        let choices = vec!["I have resolved the conflicts", "Abort (Changes remain in stash list)"];
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select action")
-            .default(0)
-            .items(&choices)
-            .interact()?;
-
-        if selection == 1 {
-            return Err(anyhow::anyhow!("Stash pop cleanup aborted. You may need to reset or drop stash manually."));
-        }
-
-        let remaining_conflicts = get_conflicted_files()?;
-        if remaining_conflicts.is_empty() {
-            println!("{}", green.apply_to("Conflicts resolved."));
-            Command::new("git").args(&["stash", "drop"]).status()?;
-            break;
-        } else {
-            println!("{}", red.apply_to("Conflicts still detected. Please ensure markers are removed."));
-            std::thread::sleep(std::time::Duration::from_secs(2));
-        }
-    }
-
-    Ok(())
-}
-
-fn get_conflicted_files() -> Result<Vec<String>> {
-    let output = Command::new("git")
-        .args(&["status", "--porcelain"])
-        .output()?;
-    
-    let stdout = String::from_utf8(output.stdout)?;
-    let mut files = Vec::new();
-
-    for line in stdout.lines() {
-        // Look for 'UU', 'AA', 'UD', etc.
-        if line.starts_with("UU") || line.starts_with("AA") || line.starts_with("DU") || line.starts_with("UD") {
-            if line.len() > 3 {
-                files.push(line[3..].to_string());
-            }
-        }
-    }
-
-    Ok(files)
-}
-
-fn print_conflict_details(file_path: &str) -> Result<()> {
-    let path = Path::new(file_path);
-    let cyan = Style::new().cyan();
-    let blue = Style::new().blue();
-    
-    println!("{}", cyan.apply_to(format!("File: {}", file_path)));
-    
-    if !path.exists() {
-        return Ok(());
-    }
-
-    let file = fs::File::open(path)?;
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader.lines().map(|l| l.unwrap_or_default()).collect();
-
-    let mut inside_conflict = false;
-    let mut printed_count = 0;
-
-    for (i, line) in lines.iter().enumerate() {
-        if line.starts_with("<<<<<<<") {
-            inside_conflict = true;
-            println!("  {}", blue.apply_to(format!("Line {}: Start of conflict", i + 1)));
-        }
-
-        if inside_conflict {
-            println!("    {}", line);
-        }
-
-        if line.starts_with(">>>>>>>") {
-            inside_conflict = false;
-            println!("  {}", blue.apply_to(format!("Line {}: End of conflict", i + 1)));
-            println!("");
-            printed_count += 1;
-            if printed_count >= 3 {
-                println!("    ... (more conflicts hidden) ...");
-                break;
-            }
-        }
-    }
-
-    Ok(())
-}
-```
-
 ### src/cmd/uninstall.rs
 ```rs
 use anyhow::Result;
@@ -1105,6 +1156,199 @@ pub fn run(template_name: &str) -> Result<()> {
 }
 ```
 
+### src/cmd/update.rs
+```rs
+use anyhow::Result;
+use console::{Style, Term};
+use dialoguer::{theme::ColorfulTheme, Select};
+use std::fs;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+use std::process::Command;
+use std::thread;
+use std::time::Duration;
+
+pub fn run() -> Result<()> {
+    let header = Style::new().cyan().bold();
+    let success = Style::new().green().bold();
+    let warning = Style::new().yellow();
+    let dim = Style::new().dim();
+
+    println!("{}", header.apply_to("\nStarting Update Process..."));
+
+    println!("{} Checking branch name...", dim.apply_to("[1/4]"));
+    let current_branch = get_current_branch()?;
+    if current_branch == "master" {
+        println!("   {}", warning.apply_to("Renaming 'master' to 'main' for compatibility..."));
+        Command::new("git").args(&["branch", "-m", "master", "main"]).status()?;
+    }
+
+    println!("{} Checking workspace status...", dim.apply_to("[2/4]"));
+    let has_changes = check_if_dirty()?;
+    let mut stashed = false;
+
+    if has_changes {
+        println!("   {}", warning.apply_to("Uncommitted changes found. Stashing locally..."));
+        stash_push()?;
+        stashed = true;
+    }
+
+    println!("{} Pulling latest changes from remote...", dim.apply_to("[3/4]"));
+    let pull_status = Command::new("git").args(&["pull", "--rebase"]).status()?;
+
+    if !pull_status.success() {
+        if is_rebase_in_progress()? {
+            handle_rebase_conflict_loop()?;
+        } else {
+            let remote = "origin";
+            let branch = get_current_branch()?;
+            println!("   {}", warning.apply_to(format!("Standard pull failed. Retrying with {}/{}...", remote, branch)));
+            let retry_status = Command::new("git").args(&["pull", "--rebase", remote, &branch]).status()?;
+            if !retry_status.success() {
+                if is_rebase_in_progress()? {
+                    handle_rebase_conflict_loop()?;
+                } else {
+                    return Err(anyhow::anyhow!("Update failed. Please check network or remote settings."));
+                }
+            }
+        }
+    }
+
+    println!("{} Finalizing workspace...", dim.apply_to("[4/4]"));
+    if stashed {
+        println!("   {}", warning.apply_to("Restoring your stashed changes..."));
+        if let Err(_) = stash_pop() {
+            handle_stash_conflict_loop()?;
+        }
+    }
+
+    println!("\n{}", success.apply_to("Update completed successfully!"));
+    Ok(())
+}
+
+fn get_current_branch() -> Result<String> {
+    let output = Command::new("git").args(&["branch", "--show-current"]).output()?;
+    let branch = String::from_utf8(output.stdout)?.trim().to_string();
+    Ok(if branch.is_empty() { "main".to_string() } else { branch })
+}
+
+fn check_if_dirty() -> Result<bool> {
+    let output = Command::new("git").args(&["status", "--porcelain"]).output()?;
+    Ok(!output.stdout.is_empty())
+}
+
+fn stash_push() -> Result<()> {
+    Command::new("git").args(&["stash", "push", "-m", "wally-auto-update"]).status()?;
+    Ok(())
+}
+
+fn stash_pop() -> Result<()> {
+    let status = Command::new("git").args(&["stash", "pop"]).status()?;
+    if !status.success() { return Err(anyhow::anyhow!("Stash conflict")); }
+    Ok(())
+}
+
+fn is_rebase_in_progress() -> Result<bool> {
+    let output = Command::new("git").args(&["rev-parse", "--git-dir"]).output()?;
+    let git_dir = String::from_utf8(output.stdout)?.trim().to_string();
+    let path = Path::new(&git_dir);
+    Ok(path.join("rebase-merge").exists() || path.join("rebase-apply").exists())
+}
+
+fn get_conflicted_files() -> Result<Vec<String>> {
+    let output = Command::new("git").args(&["status", "--porcelain"]).output()?;
+    let stdout = String::from_utf8(output.stdout)?;
+    Ok(stdout.lines()
+        .filter(|l| l.starts_with("UU") || l.starts_with("AA") || l.starts_with("DU") || l.starts_with("UD"))
+        .filter_map(|l| if l.len() > 3 { Some(l[3..].to_string()) } else { None })
+        .collect())
+}
+
+fn handle_rebase_conflict_loop() -> Result<()> {
+    let term = Term::stdout();
+    let red = Style::new().red().bold();
+    let yellow = Style::new().yellow();
+    let green = Style::new().green();
+
+    loop {
+        let files = get_conflicted_files()?;
+        if files.is_empty() { break; }
+
+        term.clear_screen()?;
+        println!("{}", red.apply_to("CONFLICTS DETECTED"));
+        println!("Please resolve conflicts in these files:\n");
+
+        for file in &files {
+            print_conflict_details(file)?;
+        }
+
+        println!("{}", yellow.apply_to("How to resolve:"));
+        println!("1. Open files, look for markers, and keep the desired code.");
+        println!("2. Save files and return here.\n");
+
+        let choices = vec!["I have resolved all conflicts", "Abort Update"];
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select an action")
+            .default(0)
+            .items(&choices)
+            .interact()?;
+
+        if selection == 1 {
+            Command::new("git").args(&["rebase", "--abort"]).status()?;
+            return Err(anyhow::anyhow!("Update aborted."));
+        }
+
+        Command::new("git").args(&["add", "."]).status()?;
+        let status = Command::new("git").env("GIT_EDITOR", "true").args(&["rebase", "--continue"]).status()?;
+
+        if status.success() {
+            println!("{}", green.apply_to("Rebase continued successfully!"));
+            break;
+        } else {
+            println!("{}", red.apply_to("Conflicts still exist. Please check again."));
+            thread::sleep(Duration::from_secs(2));
+        }
+    }
+    Ok(())
+}
+
+fn handle_stash_conflict_loop() -> Result<()> {
+    let red = Style::new().red().bold();
+    println!("\n{}", red.apply_to("STASH POP CONFLICT"));
+    let files = get_conflicted_files()?;
+    for file in &files { println!("  - {}", file); }
+    println!("\nPlease resolve markers manually. Your work is safe in 'git stash list'.");
+    Ok(())
+}
+
+fn print_conflict_details(file_path: &str) -> Result<()> {
+    let path = Path::new(file_path);
+    let cyan = Style::new().cyan().bold();
+    let blue = Style::new().blue();
+    println!("{}", cyan.apply_to(format!("File: {}", file_path)));
+    if path.exists() {
+        let file = fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut inside = false;
+        for (i, line_res) in reader.lines().enumerate() {
+            let line = line_res.unwrap_or_else(|_| String::new());
+            if line.starts_with("<<<<<<<") { 
+                inside = true; 
+                println!("  {}", blue.apply_to(format!("Line {}:", i + 1))); 
+            }
+            if inside { 
+                println!("    {}", line); 
+            }
+            if line.starts_with(">>>>>>>") { 
+                break; 
+            }
+        }
+    }
+    println!();
+    Ok(())
+}
+```
+
 ### src/main.rs
 ```rs
 mod cli;
@@ -1119,32 +1363,38 @@ fn main() -> Result<()> {
     let args = Cli::parse();
 
     match args.command {
-        Commands::New { project_name, template } => {
+        Some(Commands::New { project_name, template }) => {
             cmd::new::run(project_name, template)?;
         }
-        Commands::Context => {
+        Some(Commands::Context) => {
             cmd::context::run()?;
         }
-        Commands::List => {
+        Some(Commands::List) => {
             cmd::list::run()?;
         }
-        Commands::Commit => {
+        Some(Commands::Commit) => {
             cmd::commit::run()?;
         }
-        Commands::Branch => {
+        Some(Commands::Branch) => {
             cmd::branch::run()?;
         }
-        Commands::Sync => {
-            cmd::sync::run()?;
+        Some(Commands::Update) => {
+            cmd::update::run()?;
         }
-        Commands::Reset => {
+        Some(Commands::Reset) => {
             cmd::reset::run()?;
         }
-        Commands::Install { path } => {
+        Some(Commands::Install { path }) => {
             cmd::install::run(&path)?;
         }
-        Commands::Uninstall { template_name } => {
+        Some(Commands::Uninstall { template_name }) => {
             cmd::uninstall::run(&template_name)?;
+        }
+        Some(Commands::Help) => {
+            cmd::help::run()?;
+        }
+        None => {
+            cmd::help::run()?;
         }
     }
 
