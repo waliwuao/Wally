@@ -25,7 +25,7 @@ pub fn run() -> Result<()> {
         let categories = vec![
             exit_style.apply_to("Exit Help").to_string(),
             format!("Project Setup ({})", setup_list),
-            format!("Development & Sync ({})", dev_list),
+            format!("Git Operations ({})", dev_list),
             format!("Template Management ({})", tmpl_list),
         ];
 
@@ -37,7 +37,7 @@ pub fn run() -> Result<()> {
         match selection {
             0 => break,
             1 => show_category_menu("Project Setup", get_setup_cmds())?,
-            2 => show_category_menu("Development & Sync", get_dev_cmds())?,
+            2 => show_category_menu("Git Operations", get_dev_cmds())?,
             3 => show_category_menu("Template Management", get_tmpl_cmds())?,
             _ => break,
         }
