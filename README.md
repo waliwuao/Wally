@@ -30,6 +30,7 @@ curl https://sh.rustup.rs -sSf | sh
 在项目根目录下执行：
 
 ```bash
+cargo build --release
 cargo install --path .
 ```
 
