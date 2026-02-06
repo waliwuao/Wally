@@ -34,8 +34,8 @@ pub fn run() -> Result<()> {
 
 fn print_row(name: &str, desc: &str) {
     let clean_desc = desc.replace('\n', " ");
-    let display_desc = if clean_desc.len() > 50 {
-        format!("{}...", &clean_desc[..47])
+    let display_desc = if clean_desc.len() > 70 {
+        format!("{}...", &clean_desc[..67])
     } else {
         clean_desc
     };

@@ -6,6 +6,7 @@
     "src/": "",
     "temp/": "",
     "info/": "",
-    "script/": ""
+    "script/": "",
+    "README.md": "# Project\n\nThis is a basic project structure."
   }
 }
