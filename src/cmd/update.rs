@@ -172,9 +172,16 @@ fn print_conflict_details(file_path: &str) -> Result<()> {
         let mut inside = false;
         for (i, line_res) in reader.lines().enumerate() {
             let line = line_res.unwrap_or_else(|_| String::new());
-            if line.starts_with("<<<<<<<") { inside = true; println!("  {}", blue.apply_to(format!("Line {}:", i + 1))); }
-            if inside { println!("    {}", line); }
-            if line.starts_with(">>>>>>>") { inside = false; break; }
+            if line.starts_with("<<<<<<<") { 
+                inside = true; 
+                println!("  {}", blue.apply_to(format!("Line {}:", i + 1))); 
+            }
+            if inside { 
+                println!("    {}", line); 
+            }
+            if line.starts_with(">>>>>>>") { 
+                break; 
+            }
         }
     }
     println!();
