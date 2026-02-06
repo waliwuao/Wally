@@ -5,95 +5,86 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 
 pub fn run() -> Result<()> {
+    let header = Style::new().cyan().bold();
+    let success = Style::new().green().bold();
+    let warning = Style::new().yellow();
+    let dim = Style::new().dim();
+
+    println!("{}", header.apply_to("\nStarting Update Process..."));
+
+    println!("{} Checking branch name...", dim.apply_to("[1/4]"));
     let current_branch = get_current_branch()?;
-    
     if current_branch == "master" {
-        println!("Detected 'master' branch. Renaming to 'main' for compatibility...");
+        println!("   {}", warning.apply_to("Renaming 'master' to 'main' for compatibility..."));
         Command::new("git").args(&["branch", "-m", "master", "main"]).status()?;
     }
 
+    println!("{} Checking workspace status...", dim.apply_to("[2/4]"));
     let has_changes = check_if_dirty()?;
     let mut stashed = false;
 
     if has_changes {
-        println!("Local changes detected. Stashing to keep workspace clean...");
+        println!("   {}", warning.apply_to("Uncommitted changes found. Stashing locally..."));
         stash_push()?;
         stashed = true;
     }
 
-    println!("Synchronizing with remote...");
-    
-    let pull_status = Command::new("git")
-        .args(&["pull", "--rebase"])
-        .status()?;
+    println!("{} Pulling latest changes from remote...", dim.apply_to("[3/4]"));
+    let pull_status = Command::new("git").args(&["pull", "--rebase"]).status()?;
 
     if !pull_status.success() {
         if is_rebase_in_progress()? {
             handle_rebase_conflict_loop()?;
         } else {
-            println!("Standard pull failed (perhaps no tracking info).");
             let remote = "origin";
             let branch = get_current_branch()?;
-            
-            println!("Attempting to sync with {}/{}...", remote, branch);
-            let retry_status = Command::new("git")
-                .args(&["pull", "--rebase", remote, &branch])
-                .status()?;
-                
+            println!("   {}", warning.apply_to(format!("Standard pull failed. Retrying with {}/{}...", remote, branch)));
+            let retry_status = Command::new("git").args(&["pull", "--rebase", remote, &branch]).status()?;
             if !retry_status.success() {
                 if is_rebase_in_progress()? {
                     handle_rebase_conflict_loop()?;
                 } else {
-                    return Err(anyhow::anyhow!("Could not sync with remote. Please check your internet or remote settings."));
+                    return Err(anyhow::anyhow!("Update failed. Please check network or remote settings."));
                 }
             }
         }
     }
 
+    println!("{} Finalizing workspace...", dim.apply_to("[4/4]"));
     if stashed {
-        println!("Restoring your local changes...");
+        println!("   {}", warning.apply_to("Restoring your stashed changes..."));
         if let Err(_) = stash_pop() {
             handle_stash_conflict_loop()?;
         }
     }
 
-    println!("{}", Style::new().green().bold().apply_to("Sync completed successfully!"));
+    println!("\n{}", success.apply_to("Update completed successfully!"));
     Ok(())
 }
 
 fn get_current_branch() -> Result<String> {
-    let output = Command::new("git")
-        .args(&["branch", "--show-current"])
-        .output()?;
+    let output = Command::new("git").args(&["branch", "--show-current"]).output()?;
     let branch = String::from_utf8(output.stdout)?.trim().to_string();
-    if branch.is_empty() {
-        Ok("main".to_string())
-    } else {
-        Ok(branch)
-    }
+    Ok(if branch.is_empty() { "main".to_string() } else { branch })
 }
 
 fn check_if_dirty() -> Result<bool> {
-    let output = Command::new("git")
-        .args(&["status", "--porcelain"])
-        .output()?;
+    let output = Command::new("git").args(&["status", "--porcelain"]).output()?;
     Ok(!output.stdout.is_empty())
 }
 
 fn stash_push() -> Result<()> {
-    Command::new("git")
-        .args(&["stash", "push", "-m", "wally-auto-sync"])
-        .status()?;
+    Command::new("git").args(&["stash", "push", "-m", "wally-auto-update"]).status()?;
     Ok(())
 }
 
 fn stash_pop() -> Result<()> {
     let status = Command::new("git").args(&["stash", "pop"]).status()?;
-    if !status.success() {
-        return Err(anyhow::anyhow!("Stash pop conflict"));
-    }
+    if !status.success() { return Err(anyhow::anyhow!("Stash conflict")); }
     Ok(())
 }
 
@@ -124,45 +115,38 @@ fn handle_rebase_conflict_loop() -> Result<()> {
         if files.is_empty() { break; }
 
         term.clear_screen()?;
-        println!("{}", red.apply_to("=== CONFLICTS DETECTED ==="));
-        println!("The following files have markers (<<<<<<<, =======, >>>>>>>):\n");
+        println!("{}", red.apply_to("CONFLICTS DETECTED"));
+        println!("Please resolve conflicts in these files:\n");
 
         for file in &files {
             print_conflict_details(file)?;
         }
 
-        println!("{}", yellow.apply_to("Instructions:"));
-        println!("1. Open the files listed above in your editor.");
-        println!("2. Look for conflict markers and decide which code to keep.");
-        println!("3. Delete the markers and save the files.");
-        println!("4. Return here and select 'Resolved'.\n");
+        println!("{}", yellow.apply_to("How to resolve:"));
+        println!("1. Open files, look for markers, and keep the desired code.");
+        println!("2. Save files and return here.\n");
 
-        let choices = vec!["I have resolved all conflicts", "Abort Sync"];
+        let choices = vec!["I have resolved all conflicts", "Abort Update"];
         let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("What would you like to do?")
+            .with_prompt("Select an action")
             .default(0)
             .items(&choices)
             .interact()?;
 
         if selection == 1 {
             Command::new("git").args(&["rebase", "--abort"]).status()?;
-            return Err(anyhow::anyhow!("Sync aborted."));
+            return Err(anyhow::anyhow!("Update aborted."));
         }
 
-        println!("Applying resolutions...");
         Command::new("git").args(&["add", "."]).status()?;
-        
-        let status = Command::new("git")
-            .env("GIT_EDITOR", "true")
-            .args(&["rebase", "--continue"])
-            .status()?;
+        let status = Command::new("git").env("GIT_EDITOR", "true").args(&["rebase", "--continue"]).status()?;
 
         if status.success() {
             println!("{}", green.apply_to("Rebase continued successfully!"));
             break;
         } else {
-            println!("{}", red.apply_to("Some conflicts are still not resolved. Please check again."));
-            std::thread::sleep(std::time::Duration::from_secs(3));
+            println!("{}", red.apply_to("Conflicts still exist. Please check again."));
+            thread::sleep(Duration::from_secs(2));
         }
     }
     Ok(())
@@ -170,15 +154,10 @@ fn handle_rebase_conflict_loop() -> Result<()> {
 
 fn handle_stash_conflict_loop() -> Result<()> {
     let red = Style::new().red().bold();
-    let yellow = Style::new().yellow();
-
-    println!("\n{}", red.apply_to("=== STASH POP CONFLICT ==="));
+    println!("\n{}", red.apply_to("STASH POP CONFLICT"));
     let files = get_conflicted_files()?;
-    for file in &files {
-        println!("  - {}", file);
-    }
-    println!("\n{}", yellow.apply_to("Your local uncommitted changes conflicted with the new remote code."));
-    println!("Please resolve them manually. Your work is safe in 'git stash list'.");
+    for file in &files { println!("  - {}", file); }
+    println!("\nPlease resolve markers manually. Your work is safe in 'git stash list'.");
     Ok(())
 }
 
@@ -186,29 +165,16 @@ fn print_conflict_details(file_path: &str) -> Result<()> {
     let path = Path::new(file_path);
     let cyan = Style::new().cyan().bold();
     let blue = Style::new().blue();
-    
     println!("{}", cyan.apply_to(format!("File: {}", file_path)));
-    
     if path.exists() {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
         let mut inside = false;
-        let mut count = 0;
-
         for (i, line_res) in reader.lines().enumerate() {
-            let line = line_res.unwrap_or_default();
-            if line.starts_with("<<<<<<<") {
-                inside = true;
-                println!("  {}", blue.apply_to(format!("Line {}:", i + 1)));
-            }
-            if inside {
-                println!("    {}", line);
-            }
-            if line.starts_with(">>>>>>>") {
-                inside = false;
-                count += 1;
-                if count >= 2 { break; }
-            }
+            let line = line_res.unwrap_or_else(|_| String::new());
+            if line.starts_with("<<<<<<<") { inside = true; println!("  {}", blue.apply_to(format!("Line {}:", i + 1))); }
+            if inside { println!("    {}", line); }
+            if line.starts_with(">>>>>>>") { inside = false; break; }
         }
     }
     println!();

@@ -25,8 +25,8 @@ fn main() -> Result<()> {
         Commands::Branch => {
             cmd::branch::run()?;
         }
-        Commands::Sync => {
-            cmd::sync::run()?;
+        Commands::Update => {
+            cmd::update::run()?;
         }
         Commands::Reset => {
             cmd::reset::run()?;
@@ -36,6 +36,9 @@ fn main() -> Result<()> {
         }
         Commands::Uninstall { template_name } => {
             cmd::uninstall::run(&template_name)?;
+        }
+        Commands::Help => {
+            cmd::help::run()?;
         }
     }
 

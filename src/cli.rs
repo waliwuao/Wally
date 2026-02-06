@@ -18,7 +18,7 @@ pub enum Commands {
     List,
     Commit,
     Branch,
-    Sync,
+    Update,
     Reset,
     Install {
         path: String,
@@ -26,4 +26,5 @@ pub enum Commands {
     Uninstall {
         template_name: String,
     },
+    Help,
 }
