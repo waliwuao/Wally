@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Input, MultiSelect, Select};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use std::process::Command;
 
 pub fn run() -> Result<()> {
@@ -7,8 +7,8 @@ pub fn run() -> Result<()> {
         "Switch Branch",
         "Create Branch",
         "Merge  Branch",
-        "Squash Commits",
         "Delete Branch",
+        "Squash Commits",
     ];
 
     let selection = Select::with_theme(&ColorfulTheme::default())
@@ -22,8 +22,8 @@ pub fn run() -> Result<()> {
         0 => switch_branch(),
         1 => create_branch(),
         2 => merge_branch(),
-        3 => squash_commits(),
-        4 => delete_branch(),
+        3 => delete_branch(),
+        4 => squash_commits(),
         _ => Ok(()),
     }
 }
@@ -104,6 +104,16 @@ fn create_branch() -> Result<()> {
 
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to create branch {}", full_name));
+    }
+
+    if Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Push '{}' to remote (origin)?", full_name))
+        .default(true)
+        .interact()?
+    {
+        Command::new("git")
+            .args(&["push", "-u", "origin", &full_name])
+            .status()?;
     }
 
     Ok(())
@@ -223,7 +233,9 @@ fn delete_branch() -> Result<()> {
         return Ok(());
     }
 
-    for index in selections {
+    let mut deleted_successfully = Vec::new();
+
+    for &index in &selections {
         let branch_name = &available_to_delete[index];
         let status = Command::new("git")
             .args(&["branch", "-D", branch_name])
@@ -231,9 +243,29 @@ fn delete_branch() -> Result<()> {
             .context("Failed to execute git branch -D")?;
 
         if status.success() {
-            println!("Deleted branch '{}'", branch_name);
+            println!("Deleted branch '{}' locally.", branch_name);
+            deleted_successfully.push(branch_name.clone());
         } else {
-            eprintln!("Failed to delete branch '{}'", branch_name);
+            eprintln!("Failed to delete branch '{}' locally.", branch_name);
+        }
+    }
+
+    if !deleted_successfully.is_empty() {
+        if Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Also delete these branches from remote (origin)?")
+            .default(false)
+            .interact()?
+        {
+            for branch_name in deleted_successfully {
+                let status = Command::new("git")
+                    .args(&["push", "origin", "--delete", &branch_name])
+                    .status()
+                    .context("Failed to delete remote branch")?;
+                
+                if status.success() {
+                    println!("Deleted branch '{}' from remote.", branch_name);
+                }
+            }
         }
     }
 
