@@ -1,5 +1,5 @@
 use crate::cmd::{execute_git, execute_git_output};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use console::Style;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 

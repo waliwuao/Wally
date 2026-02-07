@@ -155,7 +155,7 @@ fn print_conflict_details(file_path: &str) -> Result<()> {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
         let mut inside = false;
-        for (i, line_res) in reader.lines().enumerate() {
+        for (_i, line_res) in reader.lines().enumerate() {
             let line = line_res.unwrap_or_else(|_| String::new());
             if line.starts_with("<<<<<<<") { inside = true; }
             if inside { println!("    {}", line); }
