@@ -1308,14 +1308,24 @@ use console::Style;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input};
 
 pub fn run() -> Result<()> {
-    // 1. Get current branch and handle master->main rename
+    // 1. Get current branch and handle master->main with CONFIRMATION
     let branch_output = execute_git_output(&["branch", "--show-current"])?;
     let mut current_branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
 
     if current_branch == "master" {
-        println!("Detected 'master' branch. Renaming to 'main'...");
-        execute_git(&["branch", "-m", "master", "main"])?;
-        current_branch = "main".to_string();
+        let yellow = Style::new().yellow();
+        println!("{}", yellow.apply_to("Detected 'master' branch. The modern standard is 'main'."));
+        
+        let confirm_rename = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Do you want to rename your local 'master' branch to 'main'?")
+            .default(true)
+            .interact()?;
+
+        if confirm_rename {
+            execute_git(&["branch", "-m", "master", "main"])?;
+            current_branch = "main".to_string();
+            println!("{}", Style::new().green().apply_to("Branch renamed to 'main'."));
+        }
     }
 
     // 2. Check if remote exists
@@ -1324,10 +1334,11 @@ pub fn run() -> Result<()> {
 
     if !has_remote {
         let url: String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("No remote found. Enter remote URL")
+            .with_prompt("No remote found. Enter remote URL (e.g., https://github.com/user/repo.git)")
             .interact_text()?;
         
         execute_git(&["remote", "add", "origin", &url])?;
+        println!("Setting upstream to origin/{}...", current_branch);
         execute_git(&["push", "-u", "origin", &current_branch])?;
     } else {
         // 3. Try standard push
@@ -1335,35 +1346,30 @@ pub fn run() -> Result<()> {
         
         if !status.success() {
             let warning = Style::new().yellow();
-            println!("{}", warning.apply_to("Push failed. Checking reasons..."));
+            println!("{}", warning.apply_to("\nPush failed. Analyzing reason..."));
 
             // Check if upstream is missing
             let upstream_check = execute_git_output(&["rev-parse", "--abbrev-ref", "@{u}"]);
             if upstream_check.is_err() || !upstream_check.unwrap().status.success() {
-                 println!("Setting upstream to origin/{}...", current_branch);
-                 let set_upstream_status = execute_git(&["push", "-u", "origin", &current_branch])?;
-                 if set_upstream_status.success() {
-                     println!("{}", Style::new().green().apply_to("Push successful!"));
-                 }
+                 println!("No upstream branch set. Setting to origin/{}...", current_branch);
+                 execute_git(&["push", "-u", "origin", &current_branch])?;
                  return Ok(());
             }
 
-            // If upstream exists but push failed, check for divergence (Squash/Amend)
+            // Conflict / Divergence
             let confirm_force = Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt("Remote history differs (likely due to Squash/Amend). Force push?")
+                .with_prompt("Remote history differs. This happens after Squash/Reset. Force push?")
                 .default(false)
                 .interact()?;
 
             if confirm_force {
-                println!("Executing force push (safe lease)...");
+                println!("Executing safe force push...");
                 let force_status = execute_git(&["push", "--force-with-lease"])?;
                 if !force_status.success() {
-                    println!("{}", Style::new().red().apply_to("Force push failed. Someone else may have pushed changes."));
-                } else {
-                    println!("{}", Style::new().green().apply_to("Force push successful."));
+                    println!("{}", Style::new().red().apply_to("Force push failed. Someone else may have pushed new changes."));
                 }
             } else {
-                println!("Push aborted. You may need to 'git pull' manually.");
+                println!("Push aborted. You should 'wally update' to sync with remote.");
             }
         } else {
             println!("{}", Style::new().green().apply_to("Push successful!"));
@@ -1377,12 +1383,13 @@ pub fn run() -> Result<()> {
 ```rs
 use crate::cmd::{execute_git, execute_git_output};
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Select};
+use console::Style;
+use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 
 pub fn run() -> Result<()> {
     let modes = vec![
-        "Undo Recent Actions (Reflog)",
-        "Reset to Specific Commit (Log)",
+        "Undo Recent Actions (Reflog) - Find 'lost' commits",
+        "Reset to Specific Commit (Log) - Go back in history",
     ];
 
     let mode_selection = Select::with_theme(&ColorfulTheme::default())
@@ -1417,7 +1424,7 @@ fn handle_reflog_reset() -> Result<()> {
         .clear(true)
         .interact()?;
 
-    perform_reset(entries[selection])
+    ask_reset_type_and_execute(entries[selection])
 }
 
 fn handle_log_reset() -> Result<()> {
@@ -1431,30 +1438,63 @@ fn handle_log_reset() -> Result<()> {
     }
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select commit to reset to (HARD)")
+        .with_prompt("Select commit to reset to")
         .default(0)
         .items(&entries)
         .clear(true)
         .interact()?;
 
-    perform_reset(entries[selection])
+    ask_reset_type_and_execute(entries[selection])
 }
 
-fn perform_reset(entry: &str) -> Result<()> {
+fn ask_reset_type_and_execute(entry: &str) -> Result<()> {
     let hash = entry
         .split_whitespace()
         .next()
         .ok_or_else(|| anyhow::anyhow!("Invalid entry format"))?;
 
-    println!("Performing HARD reset to {}...", hash);
+    let options = vec![
+        "Soft: Keep my changes (Safe. Changes stay in 'Staging Area', ready to commit)",
+        "Mixed: Keep my files, but unstage (Safe. Changes stay in files, but not 'Added')",
+        "Hard: Discard all changes (DANGEROUS! Files will be exactly like the target commit)",
+    ];
 
-    let status = execute_git(&["reset", "--hard", hash])?;
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("How should we reset to {}?", hash))
+        .default(0)
+        .items(&options)
+        .interact()?;
 
-    if !status.success() {
+    let (mode_arg, is_dangerous) = match selection {
+        0 => ("--soft", false),
+        1 => ("--mixed", false),
+        2 => ("--hard", true),
+        _ => unreachable!(),
+    };
+
+    if is_dangerous {
+        let red = Style::new().red().bold();
+        println!("{}", red.apply_to("WARNING: Hard reset will PERMANENTLY DELETE all uncommitted changes."));
+        let confirm = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Are you absolutely sure you want to proceed?")
+            .default(false)
+            .interact()?;
+        
+        if !confirm {
+            println!("Reset cancelled.");
+            return Ok(());
+        }
+    }
+
+    println!("Performing {} reset to {}...", mode_arg, hash);
+    let status = execute_git(&["reset", mode_arg, hash])?;
+
+    if status.success() {
+        println!("{}", Style::new().green().apply_to(format!("Successfully reset to {}", hash)));
+    } else {
         return Err(anyhow::anyhow!("git reset failed"));
     }
 
-    println!("Successfully reset to {}", hash);
     Ok(())
 }
 ```
@@ -1693,7 +1733,7 @@ pub fn run(template_name: &str) -> Result<()> {
 use crate::cmd::{execute_git, execute_git_output};
 use anyhow::Result;
 use console::{Style, Term};
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Select, Confirm};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -1705,23 +1745,32 @@ pub fn run() -> Result<()> {
     let warning = Style::new().yellow();
     let dim = Style::new().dim();
 
+    // 1. 分支检查与重命名建议
     println!("{} Checking branch...", dim.apply_to("[1/4]"));
     let current_branch = get_current_branch()?;
     if current_branch == "master" {
-        println!("   {}", warning.apply_to("Renaming 'master' to 'main'..."));
-        execute_git(&["branch", "-m", "master", "main"])?;
+        println!("{}", warning.apply_to("   Current branch is 'master'."));
+        if Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("   Rename to 'main' to follow modern standards?")
+            .default(true)
+            .interact()? 
+        {
+            execute_git(&["branch", "-m", "master", "main"])?;
+        }
     }
 
+    // 2. 检查暂存区
     println!("{} Checking workspace...", dim.apply_to("[2/4]"));
     let has_changes = check_if_dirty()?;
     let mut stashed = false;
 
     if has_changes {
-        println!("   {}", warning.apply_to("Stashing changes..."));
+        println!("   {}", warning.apply_to("Uncommitted changes found. Stashing safely..."));
         execute_git(&["stash", "push", "-m", "wally-auto-update"])?;
         stashed = true;
     }
 
+    // 3. 拉取并变基
     println!("{} Pulling from remote...", dim.apply_to("[3/4]"));
     let pull_status = execute_git(&["pull", "--rebase"])?;
 
@@ -1731,28 +1780,26 @@ pub fn run() -> Result<()> {
         } else {
             let remote = "origin";
             let branch = get_current_branch()?;
-            println!("   {}", warning.apply_to(format!("Retrying with {}/{}...", remote, branch)));
+            println!("   Standard pull failed. Trying {}/{}...", remote, branch);
             let retry_status = execute_git(&["pull", "--rebase", remote, &branch])?;
-            if !retry_status.success() {
-                if is_rebase_in_progress()? {
-                    handle_rebase_conflict_loop()?;
-                } else {
-                    return Err(anyhow::anyhow!("Update failed."));
-                }
+            if !retry_status.success() && is_rebase_in_progress()? {
+                handle_rebase_conflict_loop()?;
             }
         }
     }
 
+    // 4. 恢复暂存区
     println!("{} Finalizing...", dim.apply_to("[4/4]"));
     if stashed {
-        println!("   {}", warning.apply_to("Restoring stash..."));
+        println!("   Restoring your stashed changes...");
         let status = execute_git(&["stash", "pop"])?;
         if !status.success() {
-            handle_stash_conflict_loop()?;
+            println!("{}", Style::new().red().bold().apply_to("   STASH CONFLICT!"));
+            println!("   Your changes collided with remote changes. Please fix markers manually.");
         }
     }
 
-    println!("\n{}", success.apply_to("Update done!"));
+    println!("\n{}", success.apply_to("Update successful!"));
     Ok(())
 }
 
@@ -1786,72 +1833,65 @@ fn get_conflicted_files() -> Result<Vec<String>> {
 fn handle_rebase_conflict_loop() -> Result<()> {
     let term = Term::stdout();
     let red = Style::new().red().bold();
-    let yellow = Style::new().yellow();
-    let green = Style::new().green();
-
+    
     loop {
         let files = get_conflicted_files()?;
         if files.is_empty() { break; }
 
         term.clear_screen()?;
-        println!("{}", red.apply_to("CONFLICTS DETECTED"));
+        println!("{}", red.apply_to("CONFLICTS DETECTED DURING UPDATE"));
         
         for file in &files {
             print_conflict_details(file)?;
         }
 
-        println!("{}", yellow.apply_to("1. Fix files  2. Save"));
-
-        let choices = vec!["Resolved", "Abort"];
+        let choices = vec!["I have resolved the conflicts", "Abort update"];
         let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Action")
-            .default(0)
+            .with_prompt("Action required")
             .items(&choices)
-            .clear(true)
+            .default(0)
             .interact()?;
 
         if selection == 1 {
             execute_git(&["rebase", "--abort"])?;
-            return Err(anyhow::anyhow!("Aborted."));
+            return Err(anyhow::anyhow!("Update aborted by user."));
         }
 
         execute_git(&["add", "."])?;
+        // 使用环境变量避免弹出编辑器，直接尝试继续
         let status = std::process::Command::new("git")
-            .env("GIT_EDITOR", "true")
+            .env("GIT_EDITOR", "true") 
             .args(&["rebase", "--continue"])
             .status()?;
 
         if status.success() {
-            println!("{}", green.apply_to("Continued!"));
+            println!("Conflicts resolved and update continued.");
             break;
         } else {
-            println!("{}", red.apply_to("Still conflicting."));
+            println!("{}", red.apply_to("Still have conflicts. Please check the markers in files."));
             thread::sleep(Duration::from_secs(2));
         }
     }
     Ok(())
 }
 
-fn handle_stash_conflict_loop() -> Result<()> {
-    let red = Style::new().red().bold();
-    println!("\n{}", red.apply_to("STASH CONFLICT"));
-    println!("Please resolve markers manually.");
-    Ok(())
-}
-
 fn print_conflict_details(file_path: &str) -> Result<()> {
     let path = Path::new(file_path);
     let cyan = Style::new().cyan().bold();
-    println!("{}", cyan.apply_to(format!("File: {}", file_path)));
+    println!("\n{}", cyan.apply_to(format!("File: {}", file_path)));
+    
     if path.exists() {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
-        let mut inside = false;
-        for (_i, line_res) in reader.lines().enumerate() {
-            let line = line_res.unwrap_or_else(|_| String::new());
-            if line.starts_with("<<<<<<<") { inside = true; }
-            if inside { println!("    {}", line); }
-            if line.starts_with(">>>>>>>") { inside = false; }
+        let mut inside_conflict = false;
+        
+        for line_res in reader.lines().take(50) { // 最多展示50行以防刷屏
+            let line = line_res.unwrap_or_default();
+            if line.starts_with("<<<<<<<") { inside_conflict = true; }
+            if inside_conflict {
+                println!("    {}", line);
+            }
+            if line.starts_with(">>>>>>>") { inside_conflict = false; }
         }
     }
     Ok(())
