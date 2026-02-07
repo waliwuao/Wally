@@ -1,11 +1,12 @@
 use crate::cmd::{execute_git, execute_git_output};
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Select};
+use console::Style;
+use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 
 pub fn run() -> Result<()> {
     let modes = vec![
-        "Undo Recent Actions (Reflog)",
-        "Reset to Specific Commit (Log)",
+        "Undo Recent Actions (Reflog) - Find 'lost' commits",
+        "Reset to Specific Commit (Log) - Go back in history",
     ];
 
     let mode_selection = Select::with_theme(&ColorfulTheme::default())
@@ -40,7 +41,7 @@ fn handle_reflog_reset() -> Result<()> {
         .clear(true)
         .interact()?;
 
-    perform_reset(entries[selection])
+    ask_reset_type_and_execute(entries[selection])
 }
 
 fn handle_log_reset() -> Result<()> {
@@ -54,29 +55,62 @@ fn handle_log_reset() -> Result<()> {
     }
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select commit to reset to (HARD)")
+        .with_prompt("Select commit to reset to")
         .default(0)
         .items(&entries)
         .clear(true)
         .interact()?;
 
-    perform_reset(entries[selection])
+    ask_reset_type_and_execute(entries[selection])
 }
 
-fn perform_reset(entry: &str) -> Result<()> {
+fn ask_reset_type_and_execute(entry: &str) -> Result<()> {
     let hash = entry
         .split_whitespace()
         .next()
         .ok_or_else(|| anyhow::anyhow!("Invalid entry format"))?;
 
-    println!("Performing HARD reset to {}...", hash);
+    let options = vec![
+        "Soft: Keep my changes (Safe. Changes stay in 'Staging Area', ready to commit)",
+        "Mixed: Keep my files, but unstage (Safe. Changes stay in files, but not 'Added')",
+        "Hard: Discard all changes (DANGEROUS! Files will be exactly like the target commit)",
+    ];
 
-    let status = execute_git(&["reset", "--hard", hash])?;
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("How should we reset to {}?", hash))
+        .default(0)
+        .items(&options)
+        .interact()?;
 
-    if !status.success() {
+    let (mode_arg, is_dangerous) = match selection {
+        0 => ("--soft", false),
+        1 => ("--mixed", false),
+        2 => ("--hard", true),
+        _ => unreachable!(),
+    };
+
+    if is_dangerous {
+        let red = Style::new().red().bold();
+        println!("{}", red.apply_to("WARNING: Hard reset will PERMANENTLY DELETE all uncommitted changes."));
+        let confirm = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Are you absolutely sure you want to proceed?")
+            .default(false)
+            .interact()?;
+        
+        if !confirm {
+            println!("Reset cancelled.");
+            return Ok(());
+        }
+    }
+
+    println!("Performing {} reset to {}...", mode_arg, hash);
+    let status = execute_git(&["reset", mode_arg, hash])?;
+
+    if status.success() {
+        println!("{}", Style::new().green().apply_to(format!("Successfully reset to {}", hash)));
+    } else {
         return Err(anyhow::anyhow!("git reset failed"));
     }
 
-    println!("Successfully reset to {}", hash);
     Ok(())
 }
