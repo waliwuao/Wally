@@ -1,10 +1,8 @@
-use crate::cmd::{execute_git, execute_git_output, print_step};
+use crate::cmd::{execute_git, execute_git_output};
 use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 
 pub fn run() -> Result<()> {
-    print_step("Branch Management");
-    
     let actions = vec![
         "Switch Branch",
         "Create Branch",
@@ -17,6 +15,7 @@ pub fn run() -> Result<()> {
         .with_prompt("Select branch action")
         .default(0)
         .items(&actions)
+        .clear(true)
         .interact()
         .context("Failed to read selection")?;
 
@@ -43,6 +42,7 @@ fn switch_branch() -> Result<()> {
         .with_prompt("Select branch to switch to")
         .default(default_index)
         .items(&branches)
+        .clear(true)
         .interact()?;
 
     let target = &branches[selection];
@@ -70,6 +70,7 @@ fn create_branch() -> Result<()> {
         .with_prompt("Select branch type")
         .default(0)
         .items(&types)
+        .clear(true)
         .interact()?;
 
     let prefix = types[type_selection];
@@ -127,6 +128,7 @@ fn merge_branch() -> Result<()> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt(format!("Select branch to merge INTO '{}'", current))
         .items(&available_to_merge)
+        .clear(true)
         .interact()?;
 
     let branch_to_merge = &available_to_merge[selection];
@@ -163,6 +165,7 @@ fn squash_commits() -> Result<()> {
         .with_prompt("Select base branch to squash against")
         .items(&base_branches)
         .default(0)
+        .clear(true)
         .interact()?;
 
     let base = &base_branches[selection];
@@ -184,8 +187,8 @@ fn squash_commits() -> Result<()> {
     let status = execute_git(&["reset", "--soft", &merge_base])?;
 
     if status.success() {
-        println!("\nSuccess! All changes from your feature branch are now staged as a single block.");
-        println!("Use 'wally commit' now to create a clean, single commit message.");
+        println!("\nSuccess! Commits squashed into staged changes.");
+        println!("Run 'wally commit' next. You will likely need to FORCE PUSH (which is handled automatically).");
     }
 
     Ok(())
@@ -206,8 +209,9 @@ fn delete_branch() -> Result<()> {
     }
 
     let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select branches to delete (SPACE to select, ENTER to confirm)")
+        .with_prompt("Select branches to delete (SPACE to select)")
         .items(&available_to_delete)
+        .clear(true)
         .interact()?;
 
     if selections.is_empty() {
@@ -231,7 +235,7 @@ fn delete_branch() -> Result<()> {
 
     if !deleted_successfully.is_empty() {
         if Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt("Also delete these branches from remote (origin)?")
+            .with_prompt("Also delete from remote (origin)?")
             .default(false)
             .interact()?
         {

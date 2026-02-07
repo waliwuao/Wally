@@ -1,5 +1,6 @@
-use crate::cmd::{execute_git, execute_git_output, print_step};
+use crate::cmd::{execute_git, execute_git_output};
 use anyhow::{Context, Result};
+use console::Style;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 
 struct CommitType<'a> {
@@ -22,8 +23,6 @@ const COMMIT_TYPES: &[CommitType] = &[
 ];
 
 pub fn run() -> Result<()> {
-    print_step("Checking Staged Files");
-
     // Check if anything is staged
     let output = execute_git_output(&["diff", "--cached", "--name-only"])?;
     let staged = String::from_utf8(output.stdout)?;
@@ -36,7 +35,6 @@ pub fn run() -> Result<()> {
 
     let message = build_commit_message()?;
     
-    print_step("Committing");
     let status = execute_git(&["commit", "-m", &message])?;
 
     if !status.success() {
@@ -63,9 +61,10 @@ fn build_commit_message() -> Result<String> {
         .collect();
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select the type of change")
+        .with_prompt("Select change type")
         .default(0)
         .items(&items)
+        .clear(true) // Clean UI
         .interact()?;
 
     let selected_type = COMMIT_TYPES[selection].code;
@@ -76,14 +75,14 @@ fn build_commit_message() -> Result<String> {
         .interact()?;
 
     let subject: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Subject (short description)")
+        .with_prompt("Subject")
         .validate_with(|input: &String| -> Result<(), &str> {
             if input.trim().is_empty() { Err("Subject cannot be empty") } else { Ok(()) }
         })
         .interact()?;
 
     let body: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Body (detailed description, optional)")
+        .with_prompt("Body (optional)")
         .allow_empty(true)
         .interact()?;
 
@@ -102,8 +101,6 @@ fn build_commit_message() -> Result<String> {
 }
 
 fn push_workflow() -> Result<()> {
-    print_step("Pushing to Remote");
-    
     let branch_output = execute_git_output(&["branch", "--show-current"])?;
     let mut current_branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
 
@@ -118,16 +115,46 @@ fn push_workflow() -> Result<()> {
 
     if !has_remote {
         let url: String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("No remote found. Enter remote URL to add origin")
+            .with_prompt("No remote found. Enter remote URL")
             .interact_text()?;
         
         execute_git(&["remote", "add", "origin", &url])?;
         execute_git(&["push", "-u", "origin", &current_branch])?;
     } else {
+        // Try standard push first
         let status = execute_git(&["push"])?;
+        
         if !status.success() {
-            println!("Standard push failed. Trying to set upstream...");
-            execute_git(&["push", "-u", "origin", &current_branch])?;
+            // Handle failures (No upstream or Diverged history/Squash)
+            let warning = Style::new().yellow();
+            println!("{}", warning.apply_to("Push failed. Checking reasons..."));
+
+            // Check if upstream is missing
+            let upstream_check = execute_git_output(&["rev-parse", "--abbrev-ref", "@{u}"]);
+            if upstream_check.is_err() || !upstream_check.unwrap().status.success() {
+                 println!("Setting upstream to origin/{}...", current_branch);
+                 execute_git(&["push", "-u", "origin", &current_branch])?;
+                 return Ok(());
+            }
+
+            // If we are here, upstream exists but push failed. Likely divergence (Squash).
+            let confirm_force = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("Remote history differs (likely due to Squash). Force push?")
+                .default(false)
+                .interact()?;
+
+            if confirm_force {
+                // Use force-with-lease for safety
+                println!("Executing force push (safe lease)...");
+                let force_status = execute_git(&["push", "--force-with-lease"])?;
+                if !force_status.success() {
+                    println!("{}", Style::new().red().apply_to("Force push failed. Someone else may have pushed changes."));
+                } else {
+                    println!("{}", Style::new().green().apply_to("Force push successful."));
+                }
+            } else {
+                println!("Push aborted. You may need to 'git pull' manually.");
+            }
         }
     }
     Ok(())

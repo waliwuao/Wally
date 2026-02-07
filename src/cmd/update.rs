@@ -1,4 +1,4 @@
-use crate::cmd::{execute_git, execute_git_output, print_step};
+use crate::cmd::{execute_git, execute_git_output};
 use anyhow::Result;
 use console::{Style, Term};
 use dialoguer::{theme::ColorfulTheme, Select};
@@ -13,26 +13,24 @@ pub fn run() -> Result<()> {
     let warning = Style::new().yellow();
     let dim = Style::new().dim();
 
-    print_step("Starting Update Process");
-
-    println!("{} Checking branch name...", dim.apply_to("[1/4]"));
+    println!("{} Checking branch...", dim.apply_to("[1/4]"));
     let current_branch = get_current_branch()?;
     if current_branch == "master" {
-        println!("   {}", warning.apply_to("Renaming 'master' to 'main' for compatibility..."));
+        println!("   {}", warning.apply_to("Renaming 'master' to 'main'..."));
         execute_git(&["branch", "-m", "master", "main"])?;
     }
 
-    println!("{} Checking workspace status...", dim.apply_to("[2/4]"));
+    println!("{} Checking workspace...", dim.apply_to("[2/4]"));
     let has_changes = check_if_dirty()?;
     let mut stashed = false;
 
     if has_changes {
-        println!("   {}", warning.apply_to("Uncommitted changes found. Stashing locally..."));
+        println!("   {}", warning.apply_to("Stashing changes..."));
         execute_git(&["stash", "push", "-m", "wally-auto-update"])?;
         stashed = true;
     }
 
-    println!("{} Pulling latest changes from remote...", dim.apply_to("[3/4]"));
+    println!("{} Pulling from remote...", dim.apply_to("[3/4]"));
     let pull_status = execute_git(&["pull", "--rebase"])?;
 
     if !pull_status.success() {
@@ -41,28 +39,28 @@ pub fn run() -> Result<()> {
         } else {
             let remote = "origin";
             let branch = get_current_branch()?;
-            println!("   {}", warning.apply_to(format!("Standard pull failed. Retrying with {}/{}...", remote, branch)));
+            println!("   {}", warning.apply_to(format!("Retrying with {}/{}...", remote, branch)));
             let retry_status = execute_git(&["pull", "--rebase", remote, &branch])?;
             if !retry_status.success() {
                 if is_rebase_in_progress()? {
                     handle_rebase_conflict_loop()?;
                 } else {
-                    return Err(anyhow::anyhow!("Update failed. Please check network or remote settings."));
+                    return Err(anyhow::anyhow!("Update failed."));
                 }
             }
         }
     }
 
-    println!("{} Finalizing workspace...", dim.apply_to("[4/4]"));
+    println!("{} Finalizing...", dim.apply_to("[4/4]"));
     if stashed {
-        println!("   {}", warning.apply_to("Restoring your stashed changes..."));
+        println!("   {}", warning.apply_to("Restoring stash..."));
         let status = execute_git(&["stash", "pop"])?;
         if !status.success() {
             handle_stash_conflict_loop()?;
         }
     }
 
-    println!("\n{}", success.apply_to("Update completed successfully!"));
+    println!("\n{}", success.apply_to("Update done!"));
     Ok(())
 }
 
@@ -105,40 +103,37 @@ fn handle_rebase_conflict_loop() -> Result<()> {
 
         term.clear_screen()?;
         println!("{}", red.apply_to("CONFLICTS DETECTED"));
-        println!("Please resolve conflicts in these files:\n");
-
+        
         for file in &files {
             print_conflict_details(file)?;
         }
 
-        println!("{}", yellow.apply_to("How to resolve:"));
-        println!("1. Open files, look for markers, and keep the desired code.");
-        println!("2. Save files and return here.\n");
+        println!("{}", yellow.apply_to("1. Fix files  2. Save"));
 
-        let choices = vec!["I have resolved all conflicts", "Abort Update"];
+        let choices = vec!["Resolved", "Abort"];
         let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select an action")
+            .with_prompt("Action")
             .default(0)
             .items(&choices)
+            .clear(true)
             .interact()?;
 
         if selection == 1 {
             execute_git(&["rebase", "--abort"])?;
-            return Err(anyhow::anyhow!("Update aborted."));
+            return Err(anyhow::anyhow!("Aborted."));
         }
 
         execute_git(&["add", "."])?;
-        // For rebase --continue, we need to handle editor invocation if it happens
         let status = std::process::Command::new("git")
             .env("GIT_EDITOR", "true")
             .args(&["rebase", "--continue"])
             .status()?;
 
         if status.success() {
-            println!("{}", green.apply_to("Rebase continued successfully!"));
+            println!("{}", green.apply_to("Continued!"));
             break;
         } else {
-            println!("{}", red.apply_to("Conflicts still exist. Please check again."));
+            println!("{}", red.apply_to("Still conflicting."));
             thread::sleep(Duration::from_secs(2));
         }
     }
@@ -147,17 +142,14 @@ fn handle_rebase_conflict_loop() -> Result<()> {
 
 fn handle_stash_conflict_loop() -> Result<()> {
     let red = Style::new().red().bold();
-    println!("\n{}", red.apply_to("STASH POP CONFLICT"));
-    let files = get_conflicted_files()?;
-    for file in &files { println!("  - {}", file); }
-    println!("\nPlease resolve markers manually. Your work is safe in 'git stash list'.");
+    println!("\n{}", red.apply_to("STASH CONFLICT"));
+    println!("Please resolve markers manually.");
     Ok(())
 }
 
 fn print_conflict_details(file_path: &str) -> Result<()> {
     let path = Path::new(file_path);
     let cyan = Style::new().cyan().bold();
-    let blue = Style::new().blue();
     println!("{}", cyan.apply_to(format!("File: {}", file_path)));
     if path.exists() {
         let file = fs::File::open(path)?;
@@ -165,18 +157,10 @@ fn print_conflict_details(file_path: &str) -> Result<()> {
         let mut inside = false;
         for (i, line_res) in reader.lines().enumerate() {
             let line = line_res.unwrap_or_else(|_| String::new());
-            if line.starts_with("<<<<<<<") { 
-                inside = true; 
-                println!("  {}", blue.apply_to(format!("Line {}:", i + 1))); 
-            }
-            if inside { 
-                println!("    {}", line); 
-            }
-            if line.starts_with(">>>>>>>") { 
-                break; 
-            }
+            if line.starts_with("<<<<<<<") { inside = true; }
+            if inside { println!("    {}", line); }
+            if line.starts_with(">>>>>>>") { inside = false; }
         }
     }
-    println!();
     Ok(())
 }

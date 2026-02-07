@@ -36,15 +36,9 @@ pub fn execute_git_output(args: &[&str]) -> Result<Output> {
         .context("Failed to execute git command")
 }
 
-/// Helper just to print the command (useful for mixed logic like piping)
+/// Helper just to print the command
 pub fn print_git_cmd(args: &[&str]) {
     let cmd_style = Style::new().blue().bold();
     let symbol = Style::new().cyan().bold();
     println!("{} {}", symbol.apply_to(">"), cmd_style.apply_to(format!("git {}", args.join(" "))));
-}
-
-/// Helper for section headers
-pub fn print_step(msg: &str) {
-    let style = Style::new().magenta().bold();
-    println!("\n{}", style.apply_to(format!("==> {}", msg)));
 }

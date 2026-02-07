@@ -1,9 +1,8 @@
-use crate::cmd::{execute_git, execute_git_output, print_step};
+use crate::cmd::{execute_git, execute_git_output};
 use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Select};
 
 pub fn run() -> Result<()> {
-    print_step("Reset Options");
     let modes = vec![
         "Undo Recent Actions (Reflog)",
         "Reset to Specific Commit (Log)",
@@ -13,6 +12,7 @@ pub fn run() -> Result<()> {
         .with_prompt("Select reset mode")
         .default(0)
         .items(&modes)
+        .clear(true)
         .interact()
         .context("Failed to read mode selection")?;
 
@@ -34,9 +34,10 @@ fn handle_reflog_reset() -> Result<()> {
     }
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select action to UNDO (Reset to state before/at this action)")
+        .with_prompt("Select action to UNDO")
         .default(0)
         .items(&entries)
+        .clear(true)
         .interact()?;
 
     perform_reset(entries[selection])
@@ -53,9 +54,10 @@ fn handle_log_reset() -> Result<()> {
     }
 
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select commit to reset to (HARD reset)")
+        .with_prompt("Select commit to reset to (HARD)")
         .default(0)
         .items(&entries)
+        .clear(true)
         .interact()?;
 
     perform_reset(entries[selection])

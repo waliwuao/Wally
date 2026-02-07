@@ -1,10 +1,9 @@
-use crate::cmd::{execute_git, execute_git_output, print_step};
+use crate::cmd::{execute_git, execute_git_output};
 use anyhow::{Context, Result};
 use console::Style;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 
 pub fn run() -> Result<()> {
-    print_step("Semantic Tagging");
     let yellow = Style::new().yellow();
     
     let current_tag = get_latest_tag()?;
@@ -22,6 +21,7 @@ pub fn run() -> Result<()> {
         .with_prompt("Select next version type")
         .default(0)
         .items(&options)
+        .clear(true)
         .interact()?;
 
     let next_tag = match selection {
@@ -44,7 +44,6 @@ pub fn run() -> Result<()> {
 
 fn get_latest_tag() -> Result<String> {
     let output = execute_git_output(&["describe", "--tags", "--abbrev=0"])?;
-    // Note: execute_git_output might fail if no tags exist, we handle that
     
     if !output.status.success() {
         return Ok("v0.0.0".to_string());

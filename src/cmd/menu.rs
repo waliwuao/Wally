@@ -12,13 +12,13 @@ struct MenuItem {
 
 pub fn run() -> Result<()> {
     let term = Term::stdout();
-    let title_style = Style::new().magenta().bold();
     let desc_style = Style::new().dim();
 
     loop {
+        // Clear screen at the start of loop for a fresh view
         term.clear_screen()?;
-        println!("{}", title_style.apply_to("--- Wally Git Helper ---"));
-        println!("Select a command to execute:\n");
+        
+        // No redundant headers here as requested
 
         let items = get_menu_items();
         let options: Vec<String> = items
@@ -30,9 +30,10 @@ pub fn run() -> Result<()> {
         selection_items.push(Style::new().red().apply_to("Exit").to_string());
 
         let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Choose action")
+            .with_prompt("Select command") // Minimal prompt
             .default(0)
             .items(&selection_items)
+            .clear(true) // Clears the menu after selection to reduce noise
             .interact()?;
 
         if selection == items.len() {
@@ -55,11 +56,10 @@ pub fn run() -> Result<()> {
             Commands::Tag => cmd::tag::run()?,
             Commands::Install { path } => cmd::install::run(path)?,
             Commands::Uninstall { template_name } => cmd::uninstall::run(template_name)?,
-            // Commands that shouldn't be here in the menu loop or are handled above
             _ => {}
         }
 
-        println!("\nPress ENTER to return to menu...");
+        println!("\nPress ENTER to continue...");
         let _ = term.read_line()?;
     }
 
@@ -70,52 +70,52 @@ fn get_menu_items() -> Vec<MenuItem> {
     vec![
         MenuItem {
             label: "New",
-            desc: "Initialize a new project from a template",
+            desc: "Initialize a new project",
             command: Commands::New { project_name: None, template: None },
         },
         MenuItem {
             label: "Add",
-            desc: "Select files to stage (View Diffs with Right Arrow)",
+            desc: "Stage files (View Diffs)",
             command: Commands::Add,
         },
         MenuItem {
             label: "Commit",
-            desc: "Create a commit with a conventional message",
+            desc: "Commit and Push (Auto-fix squash)",
             command: Commands::Commit,
         },
         MenuItem {
             label: "Update",
-            desc: "Safe pull: Stash -> Rebase -> Pop",
+            desc: "Safe pull (Stash -> Rebase -> Pop)",
             command: Commands::Update,
         },
         MenuItem {
             label: "Branch",
-            desc: "Manage, switch, merge, or delete branches",
+            desc: "Switch, Create, Merge, Squash, Delete",
             command: Commands::Branch,
         },
         MenuItem {
             label: "Reset",
-            desc: "Undo changes (Reflog) or hard reset",
+            desc: "Undo changes (Reflog/Hard Reset)",
             command: Commands::Reset,
         },
         MenuItem {
             label: "Stats",
-            desc: "View project activity statistics",
+            desc: "Project activity statistics",
             command: Commands::Stats,
         },
         MenuItem {
             label: "Context",
-            desc: "Generate Context MD and JSON Template",
+            desc: "Generate AI context (MD & JSON)",
             command: Commands::Context,
         },
         MenuItem {
             label: "Tag",
-            desc: "Create semantic version tags",
+            desc: "Semantic versioning tags",
             command: Commands::Tag,
         },
         MenuItem {
             label: "List",
-            desc: "List available project templates",
+            desc: "List installed templates",
             command: Commands::List,
         },
     ]

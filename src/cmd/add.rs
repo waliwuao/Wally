@@ -1,7 +1,6 @@
 use crate::cmd::{execute_git, execute_git_output};
 use anyhow::{Context, Result};
 use console::{Key, Style, Term};
-use std::collections::HashSet;
 
 struct FileEntry {
     path: String,
@@ -35,18 +34,52 @@ pub fn run() -> Result<()> {
 
     let term = Term::stdout();
     let mut cursor = 0;
+    let help_style = Style::new().dim();
+    
+    // Config: How many file items to show at once (scrolling window)
+    const MAX_LIST_HEIGHT: usize = 10; 
 
     // UI Loop
     loop {
         term.clear_screen()?;
-        println!("{}", Style::new().magenta().bold().apply_to("--- Interactive Add ---"));
-        println!("Controls: [↑/↓] Move | [SPACE] Toggle | [→] View Diff | [←] Hide Diff | [ENTER] Confirm\n");
+        
+        // Calculate visible range (Simple scrolling logic)
+        let total = entries.len();
+        let (start_idx, end_idx) = if total <= MAX_LIST_HEIGHT {
+            (0, total)
+        } else {
+            // Try to keep cursor in the middle
+            let half = MAX_LIST_HEIGHT / 2;
+            if cursor < half {
+                (0, MAX_LIST_HEIGHT)
+            } else if cursor + half >= total {
+                (total - MAX_LIST_HEIGHT, total)
+            } else {
+                (cursor - half, cursor - half + MAX_LIST_HEIGHT)
+            }
+        };
 
-        for (i, entry) in entries.iter().enumerate() {
+        // Header
+        println!("{}", help_style.apply_to("[↑/↓] Move | [SPACE] Toggle | [→] View Diff | [←] Hide Diff | [ENTER] Confirm"));
+        if start_idx > 0 {
+            println!("{}", help_style.apply_to("  ..."));
+        }
+
+        for i in start_idx..end_idx {
+            let entry = &entries[i];
             let is_cursor = i == cursor;
             
-            let checkbox = if entry.selected { "[x]" } else { "[ ]" };
-            let indicator = if is_cursor { ">" } else { " " };
+            let checkbox = if entry.selected { 
+                Style::new().green().apply_to("✔") 
+            } else { 
+                Style::new().dim().apply_to("○") 
+            };
+            
+            let indicator = if is_cursor { 
+                Style::new().cyan().bold().apply_to(">") 
+            } else { 
+                Style::new().apply_to(" ") 
+            };
             
             let status_style = match entry.status.trim() {
                 "M" => Style::new().yellow(),
@@ -55,18 +88,23 @@ pub fn run() -> Result<()> {
                 _ => Style::new().cyan(),
             };
 
-            let line_style = if is_cursor { Style::new().bold() } else { Style::new() };
+            let path_style = if is_cursor { Style::new().bold() } else { Style::new() };
             
             println!("{} {} {} {}", 
                 indicator,
-                line_style.apply_to(checkbox),
+                checkbox,
                 status_style.apply_to(&entry.status),
-                line_style.apply_to(&entry.path)
+                path_style.apply_to(&entry.path)
             );
 
+            // If expanded, show FULL diff inline
             if entry.expanded {
-                show_diff(&entry.path)?;
+                show_full_diff(&entry.path)?;
             }
+        }
+
+        if end_idx < total {
+            println!("{}", help_style.apply_to("  ..."));
         }
 
         let key = term.read_key()?;
@@ -81,6 +119,10 @@ pub fn run() -> Result<()> {
                 entries[cursor].selected = !entries[cursor].selected;
             },
             Key::ArrowRight => {
+                // Collapse others to keep view clean? No, let user control multiple expansions if they want.
+                // But auto-collapsing others usually helps reading habits. 
+                // Let's keep it manual as per standard tree behavior, or 
+                // just toggle current.
                 entries[cursor].expanded = true;
             },
             Key::ArrowLeft => {
@@ -119,10 +161,7 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-fn show_diff(path: &str) -> Result<()> {
-    // Check if it's untracked (??). Git diff won't show untracked easily without --no-index or adding it first intent-to-add
-    // Simple workaround: justcat file if untracked, else git diff
-    
+fn show_full_diff(path: &str) -> Result<()> {
     // Attempt standard diff with color
     let output = std::process::Command::new("git")
         .args(&["diff", "--color=always", path])
@@ -131,14 +170,15 @@ fn show_diff(path: &str) -> Result<()> {
     
     let content = String::from_utf8_lossy(&output.stdout);
     
+    println!("{}", Style::new().dim().apply_to("  --------------------------------------------------"));
+    
     if content.trim().is_empty() {
-        // Might be untracked or new file
-        println!("      (New file or no diff available)");
+        println!("      {}", Style::new().dim().apply_to("(New file or no text diff available)"));
     } else {
         for line in content.lines() {
             println!("      {}", line);
         }
     }
-    println!();
+    println!("{}", Style::new().dim().apply_to("  --------------------------------------------------"));
     Ok(())
 }

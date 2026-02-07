@@ -1,5 +1,4 @@
 use crate::models::ProjectTemplate;
-use crate::cmd::print_step;
 use anyhow::Result;
 use console::Style;
 use ignore::WalkBuilder;
@@ -8,8 +7,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub fn run() -> Result<()> {
-    print_step("Generating Project Context");
-
     let current_dir = std::env::current_dir()?;
     let project_name = current_dir
         .file_name()
@@ -23,7 +20,6 @@ pub fn run() -> Result<()> {
         .hidden(false)
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
-            // Filter out git, info folder itself, target, and node_modules
             name != ".git" && name != "info" && name != "target" && name != "node_modules"
         })
         .build();
@@ -36,7 +32,6 @@ pub fn run() -> Result<()> {
         }
     }
 
-    // Prepare data structures
     let mut tree_output = String::new();
     let mut content_output = String::new();
     let mut template_files = BTreeMap::new();
@@ -56,9 +51,7 @@ pub fn run() -> Result<()> {
                 .to_string_lossy()
                 .to_string();
 
-            // Handle content for Markdown and JSON
             if let Ok(content) = fs::read_to_string(path) {
-                // Add to Markdown
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                 content_output.push_str(&format!("\n### {}\n", relative_path));
                 content_output.push_str(&format!("```{}\n", ext));
@@ -67,11 +60,7 @@ pub fn run() -> Result<()> {
                 
                 total_chars += content.len();
 
-                // Add to JSON Template
                 template_files.insert(relative_path.clone(), content);
-            } else {
-                // For binary or unreadable files, we might just mark directory structure or empty string
-                // But generally templates imply text files. We skip binary for JSON content.
             }
         } else if path.is_dir() {
              let relative_path = path
@@ -79,7 +68,6 @@ pub fn run() -> Result<()> {
                 .unwrap_or(path)
                 .to_string_lossy()
                 .to_string();
-             // Add directory key with empty string/placeholder to preserve structure
              let dir_key = if relative_path.ends_with('/') { relative_path } else { format!("{}/", relative_path) };
              template_files.insert(dir_key, "".to_string());
         }
@@ -90,7 +78,6 @@ pub fn run() -> Result<()> {
         fs::create_dir_all(&info_dir)?;
     }
 
-    // 1. Write Markdown
     let final_markdown = format!(
         "# Project Context: {}\n\n## File Structure\n\n```text\n{}\n```\n\n## File Contents\n{}",
         project_name, tree_output, content_output
@@ -98,7 +85,6 @@ pub fn run() -> Result<()> {
     let md_path = info_dir.join("context.md");
     fs::write(&md_path, &final_markdown)?;
 
-    // 2. Write JSON Template
     let template = ProjectTemplate {
         template_name: project_name.clone(),
         description: format!("Context snapshot of {}", project_name),
@@ -108,7 +94,6 @@ pub fn run() -> Result<()> {
     let json_path = info_dir.join(format!("{}_template.json", project_name));
     fs::write(&json_path, &json_content)?;
 
-    // 3. Ensure info/ is in .gitignore
     update_gitignore(&current_dir)?;
 
     let green = Style::new().green();

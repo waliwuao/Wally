@@ -1,10 +1,9 @@
-use crate::cmd::{execute_git_output, print_step};
+use crate::cmd::execute_git_output;
 use anyhow::{Context, Result};
 use console::Style;
 use std::collections::HashMap;
 
 pub fn run() -> Result<()> {
-    print_step("Project Activity Statistics");
     let yellow = Style::new().yellow();
     let green = Style::new().green();
     let red = Style::new().red();
