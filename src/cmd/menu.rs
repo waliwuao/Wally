@@ -15,11 +15,8 @@ pub fn run() -> Result<()> {
     let desc_style = Style::new().dim();
 
     loop {
-        // Clear screen at the start of loop for a fresh view
         term.clear_screen()?;
         
-        // No redundant headers here as requested
-
         let items = get_menu_items();
         let options: Vec<String> = items
             .iter()
@@ -30,10 +27,10 @@ pub fn run() -> Result<()> {
         selection_items.push(Style::new().red().apply_to("Exit").to_string());
 
         let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select command") // Minimal prompt
+            .with_prompt("Select command")
             .default(0)
             .items(&selection_items)
-            .clear(true) // Clears the menu after selection to reduce noise
+            .clear(true)
             .interact()?;
 
         if selection == items.len() {
@@ -42,7 +39,6 @@ pub fn run() -> Result<()> {
 
         let selected_item = &items[selection];
         
-        // Dispatch command
         match &selected_item.command {
             Commands::New { project_name, template } => cmd::new::run(project_name.clone(), template.clone())?,
             Commands::Context => cmd::context::run()?,
@@ -56,7 +52,6 @@ pub fn run() -> Result<()> {
             Commands::Tag => cmd::tag::run()?,
             Commands::Install { path } => cmd::install::run(path)?,
             Commands::Uninstall { template_name } => cmd::uninstall::run(template_name)?,
-            _ => {}
         }
 
         println!("\nPress ENTER to continue...");

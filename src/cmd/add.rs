@@ -36,19 +36,15 @@ pub fn run() -> Result<()> {
     let mut cursor = 0;
     let help_style = Style::new().dim();
     
-    // Config: How many file items to show at once (scrolling window)
     const MAX_LIST_HEIGHT: usize = 10; 
 
-    // UI Loop
     loop {
         term.clear_screen()?;
         
-        // Calculate visible range (Simple scrolling logic)
         let total = entries.len();
         let (start_idx, end_idx) = if total <= MAX_LIST_HEIGHT {
             (0, total)
         } else {
-            // Try to keep cursor in the middle
             let half = MAX_LIST_HEIGHT / 2;
             if cursor < half {
                 (0, MAX_LIST_HEIGHT)
@@ -59,8 +55,7 @@ pub fn run() -> Result<()> {
             }
         };
 
-        // Header
-        println!("{}", help_style.apply_to("[↑/↓] Move | [SPACE] Toggle | [→] View Diff | [←] Hide Diff | [ENTER] Confirm"));
+        println!("{}", help_style.apply_to("[↑/↓] Move | [SPACE] Toggle | [a] All | [→] Diff | [←] Hide | [ENTER] Done"));
         if start_idx > 0 {
             println!("{}", help_style.apply_to("  ..."));
         }
@@ -97,7 +92,6 @@ pub fn run() -> Result<()> {
                 path_style.apply_to(&entry.path)
             );
 
-            // If expanded, show FULL diff inline
             if entry.expanded {
                 show_full_diff(&entry.path)?;
             }
@@ -118,11 +112,14 @@ pub fn run() -> Result<()> {
             Key::Char(' ') => {
                 entries[cursor].selected = !entries[cursor].selected;
             },
+            Key::Char('a') => {
+                // Toggle all: if all selected -> deselect all, otherwise select all
+                let all_selected = entries.iter().all(|e| e.selected);
+                for entry in &mut entries {
+                    entry.selected = !all_selected;
+                }
+            },
             Key::ArrowRight => {
-                // Collapse others to keep view clean? No, let user control multiple expansions if they want.
-                // But auto-collapsing others usually helps reading habits. 
-                // Let's keep it manual as per standard tree behavior, or 
-                // just toggle current.
                 entries[cursor].expanded = true;
             },
             Key::ArrowLeft => {
@@ -162,7 +159,6 @@ pub fn run() -> Result<()> {
 }
 
 fn show_full_diff(path: &str) -> Result<()> {
-    // Attempt standard diff with color
     let output = std::process::Command::new("git")
         .args(&["diff", "--color=always", path])
         .output()
