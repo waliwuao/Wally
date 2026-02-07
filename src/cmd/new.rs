@@ -6,6 +6,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use crate::cmd::print_git_cmd; // Import helper for printing
 
 pub fn run(project_name: Option<String>, template_name: Option<String>) -> Result<()> {
     let name = match project_name {
@@ -26,8 +27,11 @@ pub fn run(project_name: Option<String>, template_name: Option<String>) -> Resul
 
     fs::create_dir_all(root_path)?;
 
+    // Custom execution for init to change directory context properly
+    let init_args = &["init", "-b", "main"];
+    print_git_cmd(init_args);
     Command::new("git")
-        .args(&["init", "-b", "main"])
+        .args(init_args)
         .current_dir(root_path)
         .output()
         .context("Failed to init git with branch main")?;

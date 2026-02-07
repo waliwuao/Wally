@@ -1,6 +1,6 @@
+use crate::cmd::{execute_git, execute_git_output, print_step};
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
-use std::process::Command;
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 
 struct CommitType<'a> {
     code: &'a str,
@@ -12,29 +12,32 @@ const COMMIT_TYPES: &[CommitType] = &[
     CommitType { code: "fix", desc: "A bug fix" },
     CommitType { code: "docs", desc: "Documentation only changes" },
     CommitType { code: "style", desc: "Changes that do not affect the meaning of the code" },
-    CommitType { code: "refactor", desc: "A code change that neither fixes a bug nor adds a feature" },
+    CommitType { code: "refactor", desc: "Code change that neither fixes a bug nor adds feature" },
     CommitType { code: "perf", desc: "A code change that improves performance" },
     CommitType { code: "test", desc: "Adding missing tests or correcting existing tests" },
-    CommitType { code: "build", desc: "Changes that affect the build system or external dependencies" },
-    CommitType { code: "ci", desc: "Changes to our CI configuration files and scripts" },
+    CommitType { code: "build", desc: "Changes that affect the build system" },
+    CommitType { code: "ci", desc: "Changes to our CI configuration files" },
     CommitType { code: "chore", desc: "Other changes that don't modify src or test files" },
     CommitType { code: "revert", desc: "Reverts a previous commit" },
 ];
 
 pub fn run() -> Result<()> {
-    if !stage_files()? {
-        println!("No files staged. Skipping commit.");
+    print_step("Checking Staged Files");
+
+    // Check if anything is staged
+    let output = execute_git_output(&["diff", "--cached", "--name-only"])?;
+    let staged = String::from_utf8(output.stdout)?;
+
+    if staged.trim().is_empty() {
+        println!("Nothing staged to commit.");
+        println!("Please run 'wally add' first to select files.");
         return Ok(());
     }
 
     let message = build_commit_message()?;
     
-    let status = Command::new("git")
-        .arg("commit")
-        .arg("-m")
-        .arg(&message)
-        .status()
-        .context("Failed to execute git commit")?;
+    print_step("Committing");
+    let status = execute_git(&["commit", "-m", &message])?;
 
     if !status.success() {
         return Err(anyhow::anyhow!("git commit failed"));
@@ -51,61 +54,6 @@ pub fn run() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn stage_files() -> Result<bool> {
-    let output = Command::new("git")
-        .args(&["status", "--porcelain"])
-        .output()
-        .context("Failed to get git status")?;
-
-    let stdout = String::from_utf8(output.stdout)?;
-    if stdout.is_empty() {
-        return Ok(false);
-    }
-
-    let mut files = Vec::new();
-    let mut items = vec!["[ALL] (Select this to stage ALL changes)".to_string()];
-
-    for line in stdout.lines() {
-        if line.len() > 3 {
-            let status_code = &line[0..2];
-            let file = &line[3..];
-            
-            let status_text = match status_code {
-                "??" => "Untracked",
-                " M" | "M " => "Modified ",
-                " A" | "A " => "Added    ",
-                " D" | "D " => "Deleted  ",
-                " R" | "R " => "Renamed  ",
-                "UU" => "Conflict ",
-                _ => status_code.trim(),
-            };
-
-            files.push(file.to_string());
-            items.push(format!("[{}] {}", status_text.trim(), file));
-        }
-    }
-
-    let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select files to stage (SPACE to select, ENTER to confirm)")
-        .items(&items)
-        .interact()?;
-
-    if selections.is_empty() {
-        return Ok(false);
-    }
-
-    if selections.contains(&0) {
-        Command::new("git").args(&["add", "."]).status()?;
-    } else {
-        for &index in &selections {
-            let file_index = index - 1;
-            Command::new("git").arg("add").arg(&files[file_index]).status()?;
-        }
-    }
-
-    Ok(true)
 }
 
 fn build_commit_message() -> Result<String> {
@@ -154,16 +102,18 @@ fn build_commit_message() -> Result<String> {
 }
 
 fn push_workflow() -> Result<()> {
-    let branch_output = Command::new("git").args(&["branch", "--show-current"]).output()?;
+    print_step("Pushing to Remote");
+    
+    let branch_output = execute_git_output(&["branch", "--show-current"])?;
     let mut current_branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
 
     if current_branch == "master" {
-        println!("Detected 'master' branch. Renaming to 'main' for compatibility...");
-        Command::new("git").args(&["branch", "-m", "master", "main"]).status()?;
+        println!("Detected 'master' branch. Renaming to 'main'...");
+        execute_git(&["branch", "-m", "master", "main"])?;
         current_branch = "main".to_string();
     }
 
-    let remote_output = Command::new("git").args(&["remote"]).output()?;
+    let remote_output = execute_git_output(&["remote"])?;
     let has_remote = !remote_output.stdout.is_empty();
 
     if !has_remote {
@@ -171,13 +121,13 @@ fn push_workflow() -> Result<()> {
             .with_prompt("No remote found. Enter remote URL to add origin")
             .interact_text()?;
         
-        Command::new("git").args(&["remote", "add", "origin", &url]).status()?;
-        Command::new("git").args(&["push", "-u", "origin", &current_branch]).status()?;
+        execute_git(&["remote", "add", "origin", &url])?;
+        execute_git(&["push", "-u", "origin", &current_branch])?;
     } else {
-        let status = Command::new("git").arg("push").status()?;
+        let status = execute_git(&["push"])?;
         if !status.success() {
             println!("Standard push failed. Trying to set upstream...");
-            Command::new("git").args(&["push", "-u", "origin", &current_branch]).status()?;
+            execute_git(&["push", "-u", "origin", &current_branch])?;
         }
     }
     Ok(())

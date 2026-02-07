@@ -16,6 +16,7 @@ pub enum Commands {
     },
     Context,
     List,
+    Add,    // New command
     Commit,
     Branch,
     Update,
@@ -28,5 +29,5 @@ pub enum Commands {
     Uninstall {
         template_name: String,
     },
-    Help,
+    // Help command removed
 }

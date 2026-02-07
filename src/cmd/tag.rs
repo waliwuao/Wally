@@ -1,14 +1,12 @@
+use crate::cmd::{execute_git, execute_git_output, print_step};
 use anyhow::{Context, Result};
 use console::Style;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
-use std::process::Command;
 
 pub fn run() -> Result<()> {
-    let header = Style::new().cyan().bold();
+    print_step("Semantic Tagging");
     let yellow = Style::new().yellow();
     
-    println!("{}", header.apply_to("\n--- Git Semantic Tagging ---"));
-
     let current_tag = get_latest_tag()?;
     let (major, minor, patch) = parse_version(&current_tag);
 
@@ -45,10 +43,9 @@ pub fn run() -> Result<()> {
 }
 
 fn get_latest_tag() -> Result<String> {
-    let output = Command::new("git")
-        .args(&["describe", "--tags", "--abbrev=0"])
-        .output()?;
-
+    let output = execute_git_output(&["describe", "--tags", "--abbrev=0"])?;
+    // Note: execute_git_output might fail if no tags exist, we handle that
+    
     if !output.status.success() {
         return Ok("v0.0.0".to_string());
     }
@@ -73,10 +70,7 @@ fn parse_version(tag: &str) -> (u32, u32, u32) {
 }
 
 fn create_and_push_tag(tag: &str) -> Result<()> {
-    let status = Command::new("git")
-        .args(&["tag", "-a", tag, "-m", &format!("Release {}", tag)])
-        .status()
-        .context("Failed to create git tag")?;
+    let status = execute_git(&["tag", "-a", tag, "-m", &format!("Release {}", tag)])?;
 
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to create local tag"));
@@ -84,10 +78,7 @@ fn create_and_push_tag(tag: &str) -> Result<()> {
 
     println!("Local tag '{}' created.", tag);
 
-    let push_status = Command::new("git")
-        .args(&["push", "origin", tag])
-        .status()
-        .context("Failed to push tag to origin")?;
+    let push_status = execute_git(&["push", "origin", tag])?;
 
     if push_status.success() {
         println!("Successfully pushed tag '{}' to origin.", tag);

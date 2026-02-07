@@ -1,15 +1,14 @@
+use crate::cmd::{execute_git_output, print_step};
 use anyhow::{Context, Result};
 use console::Style;
 use std::collections::HashMap;
-use std::process::Command;
 
 pub fn run() -> Result<()> {
-    let header = Style::new().cyan().bold();
+    print_step("Project Activity Statistics");
     let yellow = Style::new().yellow();
     let green = Style::new().green();
     let red = Style::new().red();
-
-    println!("{}", header.apply_to("\n--- Project Activity Statistics ---"));
+    let header = Style::new().cyan().bold();
 
     let commit_count = get_commit_count_days(7)?;
     println!(
@@ -46,22 +45,14 @@ pub fn run() -> Result<()> {
 
 fn get_commit_count_days(days: u32) -> Result<usize> {
     let since = format!("{} days ago", days);
-    let output = Command::new("git")
-        .args(&["log", "--since", &since, "--oneline"])
-        .output()
-        .context("Failed to get commit count")?;
-
+    let output = execute_git_output(&["log", "--since", &since, "--oneline"])?;
     let stdout = String::from_utf8(output.stdout)?;
     Ok(stdout.lines().count())
 }
 
 fn get_line_stats_days(days: u32) -> Result<(u64, u64)> {
     let since = format!("{} days ago", days);
-    let output = Command::new("git")
-        .args(&["log", "--since", &since, "--numstat", "--pretty=format:"])
-        .output()
-        .context("Failed to get line stats")?;
-
+    let output = execute_git_output(&["log", "--since", &since, "--numstat", "--pretty=format:"])?;
     let stdout = String::from_utf8(output.stdout)?;
     let mut added = 0;
     let mut deleted = 0;
@@ -82,11 +73,7 @@ fn get_line_stats_days(days: u32) -> Result<(u64, u64)> {
 
 fn get_top_modified_files(days: u32, limit: usize) -> Result<Vec<(String, usize)>> {
     let since = format!("{} days ago", days);
-    let output = Command::new("git")
-        .args(&["log", "--since", &since, "--pretty=format:", "--name-only"])
-        .output()
-        .context("Failed to get modified files")?;
-
+    let output = execute_git_output(&["log", "--since", &since, "--pretty=format:", "--name-only"])?;
     let stdout = String::from_utf8(output.stdout)?;
     let mut counts = HashMap::new();
 
@@ -103,19 +90,13 @@ fn get_top_modified_files(days: u32, limit: usize) -> Result<Vec<(String, usize)
 }
 
 fn get_total_stats() -> Result<(usize, String)> {
-    let count_out = Command::new("git")
-        .args(&["rev-list", "--count", "HEAD"])
-        .output()
-        .context("Failed to get total commit count")?;
+    let count_out = execute_git_output(&["rev-list", "--count", "HEAD"])?;
     let count = String::from_utf8(count_out.stdout)?
         .trim()
         .parse()
         .unwrap_or(0);
 
-    let date_out = Command::new("git")
-        .args(&["log", "--reverse", "--format=%ad", "--date=short"])
-        .output()
-        .context("Failed to get first commit date")?;
+    let date_out = execute_git_output(&["log", "--reverse", "--format=%ad", "--date=short"])?;
     let first_date = String::from_utf8(date_out.stdout)?
         .lines()
         .next()

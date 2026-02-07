@@ -1,8 +1,9 @@
+use crate::cmd::{execute_git, execute_git_output, print_step};
 use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Select};
-use std::process::Command;
 
 pub fn run() -> Result<()> {
+    print_step("Reset Options");
     let modes = vec![
         "Undo Recent Actions (Reflog)",
         "Reset to Specific Commit (Log)",
@@ -23,11 +24,7 @@ pub fn run() -> Result<()> {
 }
 
 fn handle_reflog_reset() -> Result<()> {
-    let output = Command::new("git")
-        .args(&["reflog", "-n", "20", "--pretty=format:%h - %gs: %s"])
-        .output()
-        .context("Failed to get git reflog")?;
-
+    let output = execute_git_output(&["reflog", "-n", "20", "--pretty=format:%h - %gs: %s"])?;
     let stdout = String::from_utf8(output.stdout)?;
     let entries: Vec<&str> = stdout.lines().collect();
 
@@ -40,18 +37,13 @@ fn handle_reflog_reset() -> Result<()> {
         .with_prompt("Select action to UNDO (Reset to state before/at this action)")
         .default(0)
         .items(&entries)
-        .interact()
-        .context("Failed to read selection")?;
+        .interact()?;
 
     perform_reset(entries[selection])
 }
 
 fn handle_log_reset() -> Result<()> {
-    let output = Command::new("git")
-        .args(&["log", "--pretty=format:%h - %s (%cr)", "-n", "20"])
-        .output()
-        .context("Failed to get git log")?;
-
+    let output = execute_git_output(&["log", "--pretty=format:%h - %s (%cr)", "-n", "20"])?;
     let stdout = String::from_utf8(output.stdout)?;
     let entries: Vec<&str> = stdout.lines().collect();
 
@@ -64,8 +56,7 @@ fn handle_log_reset() -> Result<()> {
         .with_prompt("Select commit to reset to (HARD reset)")
         .default(0)
         .items(&entries)
-        .interact()
-        .context("Failed to read selection")?;
+        .interact()?;
 
     perform_reset(entries[selection])
 }
@@ -78,10 +69,7 @@ fn perform_reset(entry: &str) -> Result<()> {
 
     println!("Performing HARD reset to {}...", hash);
 
-    let status = Command::new("git")
-        .args(&["reset", "--hard", hash])
-        .status()
-        .context("Failed to execute git reset")?;
+    let status = execute_git(&["reset", "--hard", hash])?;
 
     if !status.success() {
         return Err(anyhow::anyhow!("git reset failed"));

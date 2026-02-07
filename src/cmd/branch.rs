@@ -1,8 +1,10 @@
+use crate::cmd::{execute_git, execute_git_output, print_step};
 use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
-use std::process::Command;
 
 pub fn run() -> Result<()> {
+    print_step("Branch Management");
+    
     let actions = vec![
         "Switch Branch",
         "Create Branch",
@@ -41,8 +43,7 @@ fn switch_branch() -> Result<()> {
         .with_prompt("Select branch to switch to")
         .default(default_index)
         .items(&branches)
-        .interact()
-        .context("Failed to select branch")?;
+        .interact()?;
 
     let target = &branches[selection];
 
@@ -51,10 +52,7 @@ fn switch_branch() -> Result<()> {
         return Ok(());
     }
 
-    let status = Command::new("git")
-        .args(&["checkout", target])
-        .status()
-        .context("Failed to switch branch")?;
+    let status = execute_git(&["checkout", target])?;
 
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to checkout branch {}", target));
@@ -72,8 +70,7 @@ fn create_branch() -> Result<()> {
         .with_prompt("Select branch type")
         .default(0)
         .items(&types)
-        .interact()
-        .context("Failed to select branch type")?;
+        .interact()?;
 
     let prefix = types[type_selection];
 
@@ -88,8 +85,7 @@ fn create_branch() -> Result<()> {
                 Ok(())
             }
         })
-        .interact_text()
-        .context("Failed to read branch name")?;
+        .interact_text()?;
 
     let full_name = if prefix == "other" {
         name
@@ -97,10 +93,7 @@ fn create_branch() -> Result<()> {
         format!("{}/{}", prefix, name)
     };
 
-    let status = Command::new("git")
-        .args(&["checkout", "-b", &full_name])
-        .status()
-        .context("Failed to create branch")?;
+    let status = execute_git(&["checkout", "-b", &full_name])?;
 
     if !status.success() {
         return Err(anyhow::anyhow!("Failed to create branch {}", full_name));
@@ -111,9 +104,7 @@ fn create_branch() -> Result<()> {
         .default(true)
         .interact()?
     {
-        Command::new("git")
-            .args(&["push", "-u", "origin", &full_name])
-            .status()?;
+        execute_git(&["push", "-u", "origin", &full_name])?;
     }
 
     Ok(())
@@ -136,17 +127,13 @@ fn merge_branch() -> Result<()> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt(format!("Select branch to merge INTO '{}'", current))
         .items(&available_to_merge)
-        .interact()
-        .context("Failed to select branch to merge")?;
+        .interact()?;
 
     let branch_to_merge = &available_to_merge[selection];
 
     println!("Merging '{}' into '{}'...", branch_to_merge, current);
 
-    let status = Command::new("git")
-        .args(&["merge", branch_to_merge])
-        .status()
-        .context("Failed to execute git merge")?;
+    let status = execute_git(&["merge", branch_to_merge])?;
 
     if status.success() {
         println!("Successfully merged '{}'", branch_to_merge);
@@ -184,9 +171,7 @@ fn squash_commits() -> Result<()> {
         return Err(anyhow::anyhow!("Cannot squash on the base branch itself. Switch to a feature branch."));
     }
 
-    let merge_base_out = Command::new("git")
-        .args(&["merge-base", base, &current])
-        .output()?;
+    let merge_base_out = execute_git_output(&["merge-base", base, &current])?;
     
     let merge_base = String::from_utf8(merge_base_out.stdout)?.trim().to_string();
 
@@ -196,9 +181,7 @@ fn squash_commits() -> Result<()> {
 
     println!("Squashing all commits from {}... All changes will be staged.", merge_base);
 
-    let status = Command::new("git")
-        .args(&["reset", "--soft", &merge_base])
-        .status()?;
+    let status = execute_git(&["reset", "--soft", &merge_base])?;
 
     if status.success() {
         println!("\nSuccess! All changes from your feature branch are now staged as a single block.");
@@ -225,8 +208,7 @@ fn delete_branch() -> Result<()> {
     let selections = MultiSelect::with_theme(&ColorfulTheme::default())
         .with_prompt("Select branches to delete (SPACE to select, ENTER to confirm)")
         .items(&available_to_delete)
-        .interact()
-        .context("Failed to select branches")?;
+        .interact()?;
 
     if selections.is_empty() {
         println!("No branches selected.");
@@ -237,10 +219,7 @@ fn delete_branch() -> Result<()> {
 
     for &index in &selections {
         let branch_name = &available_to_delete[index];
-        let status = Command::new("git")
-            .args(&["branch", "-D", branch_name])
-            .status()
-            .context("Failed to execute git branch -D")?;
+        let status = execute_git(&["branch", "-D", branch_name])?;
 
         if status.success() {
             println!("Deleted branch '{}' locally.", branch_name);
@@ -257,10 +236,7 @@ fn delete_branch() -> Result<()> {
             .interact()?
         {
             for branch_name in deleted_successfully {
-                let status = Command::new("git")
-                    .args(&["push", "origin", "--delete", &branch_name])
-                    .status()
-                    .context("Failed to delete remote branch")?;
+                let status = execute_git(&["push", "origin", "--delete", &branch_name])?;
                 
                 if status.success() {
                     println!("Deleted branch '{}' from remote.", branch_name);
@@ -273,20 +249,12 @@ fn delete_branch() -> Result<()> {
 }
 
 fn get_branches() -> Result<Vec<String>> {
-    let output = Command::new("git")
-        .args(&["branch", "--format=%(refname:short)"])
-        .output()
-        .context("Failed to list branches")?;
-
+    let output = execute_git_output(&["branch", "--format=%(refname:short)"])?;
     let stdout = String::from_utf8(output.stdout)?;
     Ok(stdout.lines().map(|s| s.trim().to_string()).collect())
 }
 
 fn get_current_branch() -> Result<String> {
-    let output = Command::new("git")
-        .args(&["branch", "--show-current"])
-        .output()
-        .context("Failed to get current branch")?;
-
+    let output = execute_git_output(&["branch", "--show-current"])?;
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }

@@ -1,26 +1,25 @@
+use crate::cmd::{execute_git, execute_git_output, print_step};
 use anyhow::Result;
 use console::{Style, Term};
 use dialoguer::{theme::ColorfulTheme, Select};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
 pub fn run() -> Result<()> {
-    let header = Style::new().cyan().bold();
     let success = Style::new().green().bold();
     let warning = Style::new().yellow();
     let dim = Style::new().dim();
 
-    println!("{}", header.apply_to("\nStarting Update Process..."));
+    print_step("Starting Update Process");
 
     println!("{} Checking branch name...", dim.apply_to("[1/4]"));
     let current_branch = get_current_branch()?;
     if current_branch == "master" {
         println!("   {}", warning.apply_to("Renaming 'master' to 'main' for compatibility..."));
-        Command::new("git").args(&["branch", "-m", "master", "main"]).status()?;
+        execute_git(&["branch", "-m", "master", "main"])?;
     }
 
     println!("{} Checking workspace status...", dim.apply_to("[2/4]"));
@@ -29,12 +28,12 @@ pub fn run() -> Result<()> {
 
     if has_changes {
         println!("   {}", warning.apply_to("Uncommitted changes found. Stashing locally..."));
-        stash_push()?;
+        execute_git(&["stash", "push", "-m", "wally-auto-update"])?;
         stashed = true;
     }
 
     println!("{} Pulling latest changes from remote...", dim.apply_to("[3/4]"));
-    let pull_status = Command::new("git").args(&["pull", "--rebase"]).status()?;
+    let pull_status = execute_git(&["pull", "--rebase"])?;
 
     if !pull_status.success() {
         if is_rebase_in_progress()? {
@@ -43,7 +42,7 @@ pub fn run() -> Result<()> {
             let remote = "origin";
             let branch = get_current_branch()?;
             println!("   {}", warning.apply_to(format!("Standard pull failed. Retrying with {}/{}...", remote, branch)));
-            let retry_status = Command::new("git").args(&["pull", "--rebase", remote, &branch]).status()?;
+            let retry_status = execute_git(&["pull", "--rebase", remote, &branch])?;
             if !retry_status.success() {
                 if is_rebase_in_progress()? {
                     handle_rebase_conflict_loop()?;
@@ -57,7 +56,8 @@ pub fn run() -> Result<()> {
     println!("{} Finalizing workspace...", dim.apply_to("[4/4]"));
     if stashed {
         println!("   {}", warning.apply_to("Restoring your stashed changes..."));
-        if let Err(_) = stash_pop() {
+        let status = execute_git(&["stash", "pop"])?;
+        if !status.success() {
             handle_stash_conflict_loop()?;
         }
     }
@@ -67,36 +67,25 @@ pub fn run() -> Result<()> {
 }
 
 fn get_current_branch() -> Result<String> {
-    let output = Command::new("git").args(&["branch", "--show-current"]).output()?;
+    let output = execute_git_output(&["branch", "--show-current"])?;
     let branch = String::from_utf8(output.stdout)?.trim().to_string();
     Ok(if branch.is_empty() { "main".to_string() } else { branch })
 }
 
 fn check_if_dirty() -> Result<bool> {
-    let output = Command::new("git").args(&["status", "--porcelain"]).output()?;
+    let output = execute_git_output(&["status", "--porcelain"])?;
     Ok(!output.stdout.is_empty())
 }
 
-fn stash_push() -> Result<()> {
-    Command::new("git").args(&["stash", "push", "-m", "wally-auto-update"]).status()?;
-    Ok(())
-}
-
-fn stash_pop() -> Result<()> {
-    let status = Command::new("git").args(&["stash", "pop"]).status()?;
-    if !status.success() { return Err(anyhow::anyhow!("Stash conflict")); }
-    Ok(())
-}
-
 fn is_rebase_in_progress() -> Result<bool> {
-    let output = Command::new("git").args(&["rev-parse", "--git-dir"]).output()?;
+    let output = execute_git_output(&["rev-parse", "--git-dir"])?;
     let git_dir = String::from_utf8(output.stdout)?.trim().to_string();
     let path = Path::new(&git_dir);
     Ok(path.join("rebase-merge").exists() || path.join("rebase-apply").exists())
 }
 
 fn get_conflicted_files() -> Result<Vec<String>> {
-    let output = Command::new("git").args(&["status", "--porcelain"]).output()?;
+    let output = execute_git_output(&["status", "--porcelain"])?;
     let stdout = String::from_utf8(output.stdout)?;
     Ok(stdout.lines()
         .filter(|l| l.starts_with("UU") || l.starts_with("AA") || l.starts_with("DU") || l.starts_with("UD"))
@@ -134,12 +123,16 @@ fn handle_rebase_conflict_loop() -> Result<()> {
             .interact()?;
 
         if selection == 1 {
-            Command::new("git").args(&["rebase", "--abort"]).status()?;
+            execute_git(&["rebase", "--abort"])?;
             return Err(anyhow::anyhow!("Update aborted."));
         }
 
-        Command::new("git").args(&["add", "."]).status()?;
-        let status = Command::new("git").env("GIT_EDITOR", "true").args(&["rebase", "--continue"]).status()?;
+        execute_git(&["add", "."])?;
+        // For rebase --continue, we need to handle editor invocation if it happens
+        let status = std::process::Command::new("git")
+            .env("GIT_EDITOR", "true")
+            .args(&["rebase", "--continue"])
+            .status()?;
 
         if status.success() {
             println!("{}", green.apply_to("Rebase continued successfully!"));

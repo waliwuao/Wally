@@ -19,6 +19,9 @@ fn main() -> Result<()> {
         Some(Commands::List) => {
             cmd::list::run()?;
         }
+        Some(Commands::Add) => {
+            cmd::add::run()?;
+        }
         Some(Commands::Commit) => {
             cmd::commit::run()?;
         }
@@ -43,11 +46,9 @@ fn main() -> Result<()> {
         Some(Commands::Uninstall { template_name }) => {
             cmd::uninstall::run(&template_name)?;
         }
-        Some(Commands::Help) => {
-            cmd::help::run()?;
-        }
+        // No arguments provided -> run the interactive menu
         None => {
-            cmd::help::run()?;
+            cmd::menu::run()?;
         }
     }
 

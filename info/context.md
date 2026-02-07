@@ -7,7 +7,6 @@ wally/
 ├── .gitignore
 ├── Cargo.toml
 ├── LICENSE
-├── README.md
 ├── src/
 │   ├── cli.rs
 │   ├── cmd/
@@ -20,6 +19,8 @@ wally/
 │   │   ├── mod.rs
 │   │   ├── new.rs
 │   │   ├── reset.rs
+│   │   ├── stats.rs
+│   │   ├── tag.rs
 │   │   ├── uninstall.rs
 │   │   └── update.rs
 │   ├── main.rs
@@ -35,6 +36,7 @@ wally/
 ```
 /target
 Cargo.lock
+README.md
 ```
 
 ### Cargo.toml
@@ -80,104 +82,6 @@ SOFTWARE.
 
 ```
 
-### README.md
-```md
-# Wally - 规范化 Git 命令行工具集
-
-Wally 是一个基于 Rust 开发的 Git 助手，旨在通过抽象复杂的 Git 指令来建立标准化的交互式工作流。它专注于强制执行开发规范、保持线性的提交历史。
-
----
-
-## 核心功能
-
-*   **自动化安全同步**：在更新远程代码时，自动完成工作区暂存（Stash）、线性合并（Rebase）和工作区恢复（Pop）。
-*   **约定式提交**：引导用户按照 Conventional Commits 规范进行文件暂存和提交信息撰写。
-*   **交互式分支管理**：简化分支的生命周期管理，包括带前缀的分支创建、快速切换及安全删除。
-*   **项目模板系统**：通过自定义 JSON 模板快速初始化具备 Git 环境的标准化项目。
-
----
-
-## 安装说明
-
-### 环境要求
-
-*   已安装 Rust 编译环境 (Cargo)
-*   系统中已安装 Git
-
-### 编译与安装
-
-在项目根目录下执行：
-
-```bash
-cargo install --path .
-```
-
----
-
-## 命令指南
-
-你可以直接输入 `wally` 或 `wally help` 进入交互式帮助菜单。
-
-### 1. 项目初始化 (Project Setup)
-
-*   **`wally new [项目名]`**
-    从预设模板初始化仓库，并强制设置 `main` 为默认分支。若未提供参数，将启动交互式向导。
-*   **`wally context`**
-    扫描当前项目并生成 `info/context.md`。该文件整合了目录树和所有追踪文件的源码，方便直接提供给 AI 助手进行代码分析。
-
-### 2. 日常开发与同步 (Development & Sync)
-
-*   **`wally update`**
-    执行最安全的同步流程：
-    1. 自动检测并暂存未提交的修改。
-    2. 自动处理 `master` 到 `main` 的重命名映射。
-    3. 使用 `--rebase` 模式拉取远程代码，确保提交历史不产生分叉。
-    4. 还原暂存修改，并提供交互式冲突修复引导。
-*   **`wally commit`**
-    全能提交助手：
-    1. 交互式选择暂存文件（支持一键全选）。
-    2. 按照类型（feat, fix, docs等）、范围、描述、正文的顺序构建规范化消息。
-    3. 自动询问并执行推送（Push）操作。
-*   **`wally branch`**
-    交互式分支管理。支持创建规范化前缀分支，一键切换分支，或批量清理已合并的旧分支。
-*   **`wally reset`**
-    可视化回滚。展示最近 20 条提交记录，用户选择后将执行强制重置（HARD reset）。
-
-### 3. 模板管理 (Template Management)
-
-*   **`wally list`**：列出系统中所有已安装的项目模板及其描述。
-*   **`wally install [文件路径]`**：从本地 JSON 文件导入新的自定义项目模板。
-*   **`wally uninstall [模板名]`**：从系统中移除特定的自定义模板。
-
----
-
-## 模板配置参考
-
-Wally 使用 JSON 格式定义模板。以下是一个标准的模板结构示例：
-
-```json
-{
-  "template_name": "rust-basic",
-  "description": "基础 Rust 项目结构",
-  "files": {
-    "Cargo.toml": "[package]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nedition = \"2021\"",
-    "src/main.rs": "fn main() {\n    println!(\"Hello, world!\");\n}",
-    ".gitignore": "target/\nCargo.lock",
-    "README.md": "# 项目标题"
-  }
-}
-```
-
----
-
-## 设计哲学
-
-1.  **线性历史**：Wally 强制在更新时使用 `rebase` 而非 `merge`，确保项目演进历史是一条直线，便于后期代码追溯和 Debug。
-2.  **工作区保护**：通过自动化的 `stash` 操作，避免了初学者常遇到的“工作区不干净无法拉取代码”的报错困扰。
-3.  **降低认知负担**：将复杂的 Git 组合指令转化为直观的选择题和填空题，使用户专注于代码开发而非 Git 命令细节。
-
-```
-
 ### src/cli.rs
 ```rs
 use clap::{Parser, Subcommand};
@@ -202,6 +106,8 @@ pub enum Commands {
     Branch,
     Update,
     Reset,
+    Stats,
+    Tag,
     Install {
         path: String,
     },
@@ -215,12 +121,18 @@ pub enum Commands {
 ### src/cmd/branch.rs
 ```rs
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Input, MultiSelect, Select};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use std::process::Command;
 
 pub fn run() -> Result<()> {
-    let actions = vec!["Switch Branch", "Create New Branch", "Delete Branch"];
-    
+    let actions = vec![
+        "Switch Branch",
+        "Create Branch",
+        "Merge  Branch",
+        "Delete Branch",
+        "Squash Commits",
+    ];
+
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select branch action")
         .default(0)
@@ -231,7 +143,9 @@ pub fn run() -> Result<()> {
     match selection {
         0 => switch_branch(),
         1 => create_branch(),
-        2 => delete_branch(),
+        2 => merge_branch(),
+        3 => delete_branch(),
+        4 => squash_commits(),
         _ => Ok(()),
     }
 }
@@ -272,8 +186,10 @@ fn switch_branch() -> Result<()> {
 }
 
 fn create_branch() -> Result<()> {
-    let types = vec!["feat", "fix", "chore", "docs", "refactor", "style", "test", "other"];
-    
+    let types = vec![
+        "feat", "fix", "chore", "docs", "refactor", "style", "test", "other",
+    ];
+
     let type_selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select branch type")
         .default(0)
@@ -312,13 +228,112 @@ fn create_branch() -> Result<()> {
         return Err(anyhow::anyhow!("Failed to create branch {}", full_name));
     }
 
+    if Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Push '{}' to remote (origin)?", full_name))
+        .default(true)
+        .interact()?
+    {
+        Command::new("git")
+            .args(&["push", "-u", "origin", &full_name])
+            .status()?;
+    }
+
+    Ok(())
+}
+
+fn merge_branch() -> Result<()> {
+    let current = get_current_branch()?;
+    let branches = get_branches()?;
+
+    let available_to_merge: Vec<String> = branches
+        .into_iter()
+        .filter(|b| b != &current)
+        .collect();
+
+    if available_to_merge.is_empty() {
+        println!("No other branches available to merge.");
+        return Ok(());
+    }
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Select branch to merge INTO '{}'", current))
+        .items(&available_to_merge)
+        .interact()
+        .context("Failed to select branch to merge")?;
+
+    let branch_to_merge = &available_to_merge[selection];
+
+    println!("Merging '{}' into '{}'...", branch_to_merge, current);
+
+    let status = Command::new("git")
+        .args(&["merge", branch_to_merge])
+        .status()
+        .context("Failed to execute git merge")?;
+
+    if status.success() {
+        println!("Successfully merged '{}'", branch_to_merge);
+    } else {
+        return Err(anyhow::anyhow!(
+            "Merge failed (likely due to conflicts). Please resolve conflicts manually."
+        ));
+    }
+
+    Ok(())
+}
+
+fn squash_commits() -> Result<()> {
+    let current = get_current_branch()?;
+    let branches = get_branches()?;
+    
+    let base_branches: Vec<String> = branches
+        .into_iter()
+        .filter(|b| b == "main" || b == "master" || b == "develop")
+        .collect();
+
+    if base_branches.is_empty() {
+        return Err(anyhow::anyhow!("No base branch (main/master/develop) found to squash against."));
+    }
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select base branch to squash against")
+        .items(&base_branches)
+        .default(0)
+        .interact()?;
+
+    let base = &base_branches[selection];
+
+    if current == *base {
+        return Err(anyhow::anyhow!("Cannot squash on the base branch itself. Switch to a feature branch."));
+    }
+
+    let merge_base_out = Command::new("git")
+        .args(&["merge-base", base, &current])
+        .output()?;
+    
+    let merge_base = String::from_utf8(merge_base_out.stdout)?.trim().to_string();
+
+    if merge_base.is_empty() {
+        return Err(anyhow::anyhow!("Could not find a common ancestor with {}", base));
+    }
+
+    println!("Squashing all commits from {}... All changes will be staged.", merge_base);
+
+    let status = Command::new("git")
+        .args(&["reset", "--soft", &merge_base])
+        .status()?;
+
+    if status.success() {
+        println!("\nSuccess! All changes from your feature branch are now staged as a single block.");
+        println!("Use 'wally commit' now to create a clean, single commit message.");
+    }
+
     Ok(())
 }
 
 fn delete_branch() -> Result<()> {
     let current = get_current_branch()?;
     let branches = get_branches()?;
-    
+
     let available_to_delete: Vec<String> = branches
         .into_iter()
         .filter(|b| b != &current)
@@ -340,7 +355,9 @@ fn delete_branch() -> Result<()> {
         return Ok(());
     }
 
-    for index in selections {
+    let mut deleted_successfully = Vec::new();
+
+    for &index in &selections {
         let branch_name = &available_to_delete[index];
         let status = Command::new("git")
             .args(&["branch", "-D", branch_name])
@@ -348,9 +365,29 @@ fn delete_branch() -> Result<()> {
             .context("Failed to execute git branch -D")?;
 
         if status.success() {
-            println!("Deleted branch '{}'", branch_name);
+            println!("Deleted branch '{}' locally.", branch_name);
+            deleted_successfully.push(branch_name.clone());
         } else {
-            eprintln!("Failed to delete branch '{}'", branch_name);
+            eprintln!("Failed to delete branch '{}' locally.", branch_name);
+        }
+    }
+
+    if !deleted_successfully.is_empty() {
+        if Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Also delete these branches from remote (origin)?")
+            .default(false)
+            .interact()?
+        {
+            for branch_name in deleted_successfully {
+                let status = Command::new("git")
+                    .args(&["push", "origin", "--delete", &branch_name])
+                    .status()
+                    .context("Failed to delete remote branch")?;
+                
+                if status.success() {
+                    println!("Deleted branch '{}' from remote.", branch_name);
+                }
+            }
         }
     }
 
@@ -720,9 +757,9 @@ pub fn run() -> Result<()> {
 
         let categories = vec![
             exit_style.apply_to("Exit Help").to_string(),
-            format!("Project Setup ({})", setup_list),
-            format!("Git Operations ({})", dev_list),
-            format!("Template Management ({})", tmpl_list),
+            format!("Project Setup         ({})", setup_list),
+            format!("Git Operations        ({})", dev_list),
+            format!("Template Management   ({})", tmpl_list),
         ];
 
         let selection = Select::with_theme(&ColorfulTheme::default())
@@ -819,12 +856,22 @@ fn get_dev_cmds() -> Vec<CmdInfo> {
         CmdInfo {
             name: "branch",
             usage: "wally branch",
-            desc: "Manage branches interactively: switch, create with prefixes (feat/fix), or delete safely.",
+            desc: "Manage branches interactively: switch, create, merge, squash, or delete safely.",
         },
         CmdInfo {
             name: "reset",
             usage: "wally reset",
-            desc: "Choose from the last 20 commits to perform a HARD reset. All uncommitted changes will be lost.",
+            desc: "Provides options to undo recent actions (reflog) or reset to a specific commit (log).",
+        },
+        CmdInfo {
+            name: "stats",
+            usage: "wally stats",
+            desc: "Shows project activity: recent commit frequency, line changes, and most modified files.",
+        },
+        CmdInfo {
+            name: "tag",
+            usage: "wally tag",
+            desc: "Automated semantic versioning: calculates and pushes the next tag (Major/Minor/Patch).",
         },
     ]
 }
@@ -944,8 +991,8 @@ pub fn run() -> Result<()> {
 
 fn print_row(name: &str, desc: &str) {
     let clean_desc = desc.replace('\n', " ");
-    let display_desc = if clean_desc.len() > 50 {
-        format!("{}...", &clean_desc[..47])
+    let display_desc = if clean_desc.len() > 70 {
+        format!("{}...", &clean_desc[..67])
     } else {
         clean_desc
     };
@@ -963,6 +1010,8 @@ pub mod install;
 pub mod list;
 pub mod new;
 pub mod reset;
+pub mod stats;
+pub mod tag;
 pub mod update;
 pub mod uninstall;
 
@@ -1087,15 +1136,59 @@ use dialoguer::{theme::ColorfulTheme, Select};
 use std::process::Command;
 
 pub fn run() -> Result<()> {
+    let modes = vec![
+        "Undo Recent Actions (Reflog)",
+        "Reset to Specific Commit (Log)",
+    ];
+
+    let mode_selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select reset mode")
+        .default(0)
+        .items(&modes)
+        .interact()
+        .context("Failed to read mode selection")?;
+
+    if mode_selection == 0 {
+        handle_reflog_reset()
+    } else {
+        handle_log_reset()
+    }
+}
+
+fn handle_reflog_reset() -> Result<()> {
     let output = Command::new("git")
-        .args(&["log", "--pretty=format:%h - %s", "-n", "20"])
+        .args(&["reflog", "-n", "20", "--pretty=format:%h - %gs: %s"])
+        .output()
+        .context("Failed to get git reflog")?;
+
+    let stdout = String::from_utf8(output.stdout)?;
+    let entries: Vec<&str> = stdout.lines().collect();
+
+    if entries.is_empty() {
+        println!("No recent actions found in reflog.");
+        return Ok(());
+    }
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select action to UNDO (Reset to state before/at this action)")
+        .default(0)
+        .items(&entries)
+        .interact()
+        .context("Failed to read selection")?;
+
+    perform_reset(entries[selection])
+}
+
+fn handle_log_reset() -> Result<()> {
+    let output = Command::new("git")
+        .args(&["log", "--pretty=format:%h - %s (%cr)", "-n", "20"])
         .output()
         .context("Failed to get git log")?;
 
     let stdout = String::from_utf8(output.stdout)?;
-    let commits: Vec<&str> = stdout.lines().collect();
+    let entries: Vec<&str> = stdout.lines().collect();
 
-    if commits.is_empty() {
+    if entries.is_empty() {
         println!("No commits found to reset to.");
         return Ok(());
     }
@@ -1103,20 +1196,23 @@ pub fn run() -> Result<()> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select commit to reset to (HARD reset)")
         .default(0)
-        .items(&commits)
+        .items(&entries)
         .interact()
         .context("Failed to read selection")?;
 
-    let selected_commit = commits[selection];
-    let commit_hash = selected_commit
+    perform_reset(entries[selection])
+}
+
+fn perform_reset(entry: &str) -> Result<()> {
+    let hash = entry
         .split_whitespace()
         .next()
-        .ok_or_else(|| anyhow::anyhow!("Invalid commit format"))?;
+        .ok_or_else(|| anyhow::anyhow!("Invalid entry format"))?;
 
-    println!("Resetting to {}...", commit_hash);
+    println!("Performing HARD reset to {}...", hash);
 
     let status = Command::new("git")
-        .args(&["reset", "--hard", commit_hash])
+        .args(&["reset", "--hard", hash])
         .status()
         .context("Failed to execute git reset")?;
 
@@ -1124,7 +1220,239 @@ pub fn run() -> Result<()> {
         return Err(anyhow::anyhow!("git reset failed"));
     }
 
-    println!("Successfully reset to {}", commit_hash);
+    println!("Successfully reset to {}", hash);
+    Ok(())
+}
+```
+
+### src/cmd/stats.rs
+```rs
+use anyhow::{Context, Result};
+use console::Style;
+use std::collections::HashMap;
+use std::process::Command;
+
+pub fn run() -> Result<()> {
+    let header = Style::new().cyan().bold();
+    let yellow = Style::new().yellow();
+    let green = Style::new().green();
+    let red = Style::new().red();
+
+    println!("{}", header.apply_to("\n--- Project Activity Statistics ---"));
+
+    let commit_count = get_commit_count_days(7)?;
+    println!(
+        "\n{} Commits in the last 7 days: {}",
+        yellow.apply_to("●"),
+        commit_count
+    );
+
+    let (added, deleted) = get_line_stats_days(7)?;
+    println!(
+        "{} Lines changed: {} (added), {} (deleted)",
+        yellow.apply_to("●"),
+        green.apply_to(format!("+{}", added)),
+        red.apply_to(format!("-{}", deleted))
+    );
+
+    println!("\n{}", header.apply_to("Top 5 Most Modified Files (Last 30 Days):"));
+    let top_files = get_top_modified_files(30, 5)?;
+    if top_files.is_empty() {
+        println!("  No data available.");
+    } else {
+        for (file, count) in top_files {
+            println!("  {:>3} times - {}", count, file);
+        }
+    }
+
+    let (total_commits, first_commit) = get_total_stats()?;
+    println!("\n{}", header.apply_to("Lifetime Summary:"));
+    println!("  Total Commits:  {}", total_commits);
+    println!("  Project Start:  {}", first_commit);
+
+    Ok(())
+}
+
+fn get_commit_count_days(days: u32) -> Result<usize> {
+    let since = format!("{} days ago", days);
+    let output = Command::new("git")
+        .args(&["log", "--since", &since, "--oneline"])
+        .output()
+        .context("Failed to get commit count")?;
+
+    let stdout = String::from_utf8(output.stdout)?;
+    Ok(stdout.lines().count())
+}
+
+fn get_line_stats_days(days: u32) -> Result<(u64, u64)> {
+    let since = format!("{} days ago", days);
+    let output = Command::new("git")
+        .args(&["log", "--since", &since, "--numstat", "--pretty=format:"])
+        .output()
+        .context("Failed to get line stats")?;
+
+    let stdout = String::from_utf8(output.stdout)?;
+    let mut added = 0;
+    let mut deleted = 0;
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            if let Ok(a) = parts[0].parse::<u64>() {
+                added += a;
+            }
+            if let Ok(d) = parts[1].parse::<u64>() {
+                deleted += d;
+            }
+        }
+    }
+    Ok((added, deleted))
+}
+
+fn get_top_modified_files(days: u32, limit: usize) -> Result<Vec<(String, usize)>> {
+    let since = format!("{} days ago", days);
+    let output = Command::new("git")
+        .args(&["log", "--since", &since, "--pretty=format:", "--name-only"])
+        .output()
+        .context("Failed to get modified files")?;
+
+    let stdout = String::from_utf8(output.stdout)?;
+    let mut counts = HashMap::new();
+
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            *counts.entry(trimmed.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    let mut sorted: Vec<_> = counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    Ok(sorted.into_iter().take(limit).collect())
+}
+
+fn get_total_stats() -> Result<(usize, String)> {
+    let count_out = Command::new("git")
+        .args(&["rev-list", "--count", "HEAD"])
+        .output()
+        .context("Failed to get total commit count")?;
+    let count = String::from_utf8(count_out.stdout)?
+        .trim()
+        .parse()
+        .unwrap_or(0);
+
+    let date_out = Command::new("git")
+        .args(&["log", "--reverse", "--format=%ad", "--date=short"])
+        .output()
+        .context("Failed to get first commit date")?;
+    let first_date = String::from_utf8(date_out.stdout)?
+        .lines()
+        .next()
+        .unwrap_or("Unknown")
+        .to_string();
+
+    Ok((count, first_date))
+}
+```
+
+### src/cmd/tag.rs
+```rs
+use anyhow::{Context, Result};
+use console::Style;
+use dialoguer::{theme::ColorfulTheme, Confirm, Select};
+use std::process::Command;
+
+pub fn run() -> Result<()> {
+    let header = Style::new().cyan().bold();
+    let yellow = Style::new().yellow();
+    
+    println!("{}", header.apply_to("\n--- Git Semantic Tagging ---"));
+
+    let current_tag = get_latest_tag()?;
+    let (major, minor, patch) = parse_version(&current_tag);
+
+    println!("Current latest tag: {}", yellow.apply_to(&current_tag));
+
+    let options = vec![
+        format!("Patch: v{}.{}.{} (Bug fixes)", major, minor, patch + 1),
+        format!("Minor: v{}.{}.0 (New features)", major, minor + 1),
+        format!("Major: v{}.0.0 (Breaking changes)", major + 1),
+    ];
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select next version type")
+        .default(0)
+        .items(&options)
+        .interact()?;
+
+    let next_tag = match selection {
+        0 => format!("v{}.{}.{}", major, minor, patch + 1),
+        1 => format!("v{}.{}.0", major, minor + 1),
+        2 => format!("v{}.0.0", major + 1),
+        _ => unreachable!(),
+    };
+
+    if Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Create and push tag '{}'?", next_tag))
+        .default(true)
+        .interact()?
+    {
+        create_and_push_tag(&next_tag)?;
+    }
+
+    Ok(())
+}
+
+fn get_latest_tag() -> Result<String> {
+    let output = Command::new("git")
+        .args(&["describe", "--tags", "--abbrev=0"])
+        .output()?;
+
+    if !output.status.success() {
+        return Ok("v0.0.0".to_string());
+    }
+
+    let tag = String::from_utf8(output.stdout)?.trim().to_string();
+    Ok(if tag.is_empty() { "v0.0.0".to_string() } else { tag })
+}
+
+fn parse_version(tag: &str) -> (u32, u32, u32) {
+    let cleaned = tag.trim_start_matches('v');
+    let parts: Vec<u32> = cleaned
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+
+    match parts.len() {
+        3 => (parts[0], parts[1], parts[2]),
+        2 => (parts[0], parts[1], 0),
+        1 => (parts[0], 0, 0),
+        _ => (0, 0, 0),
+    }
+}
+
+fn create_and_push_tag(tag: &str) -> Result<()> {
+    let status = Command::new("git")
+        .args(&["tag", "-a", tag, "-m", &format!("Release {}", tag)])
+        .status()
+        .context("Failed to create git tag")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("Failed to create local tag"));
+    }
+
+    println!("Local tag '{}' created.", tag);
+
+    let push_status = Command::new("git")
+        .args(&["push", "origin", tag])
+        .status()
+        .context("Failed to push tag to origin")?;
+
+    if push_status.success() {
+        println!("Successfully pushed tag '{}' to origin.", tag);
+    } else {
+        println!("Warning: Tag created but failed to push to origin. Check your remote settings.");
+    }
 
     Ok(())
 }
@@ -1384,6 +1712,12 @@ fn main() -> Result<()> {
         Some(Commands::Reset) => {
             cmd::reset::run()?;
         }
+        Some(Commands::Stats) => {
+            cmd::stats::run()?;
+        }
+        Some(Commands::Tag) => {
+            cmd::tag::run()?;
+        }
         Some(Commands::Install { path }) => {
             cmd::install::run(&path)?;
         }
@@ -1426,7 +1760,9 @@ pub struct ProjectTemplate {
     "src/": "",
     "temp/": "",
     "info/": "",
-    "script/": ""
+    "script/": "",
+    "README.md": "# Project\n\nThis is a basic project structure."
   }
 }
+
 ```
