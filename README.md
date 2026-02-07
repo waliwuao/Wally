@@ -1,97 +1,142 @@
-# Wally - 规范化 Git 命令行工具集
+# Wally
 
-Wally 是一个基于 Rust 开发的 Git 助手，旨在通过抽象复杂的 Git 指令来建立标准化的交互式工作流。它专注于强制执行开发规范、保持线性的提交历史，并为开发者提供直观的操作反馈。
+**A friendly, interactive Git CLI companion written in Rust.**
 
----
+Wally is designed to streamline your Git workflow, enforce best practices (like Conventional Commits), and bridge the gap between complex Git commands and developer productivity. Whether you are a Git beginner or a seasoned developer looking to reduce keystrokes, Wally has you covered.
 
-## 核心功能
+It acts as a transparent wrapper around Git, providing interactive TUI menus while always showing you the underlying commands being executed.
 
-*   **自动化安全同步**：更新代码时自动完成 Stash、Rebase 和 Pop，确保工作区安全且历史线形。
-*   **约定式提交**：强制执行 Conventional Commits 规范，自动构建标准化的提交信息。
-*   **多维回滚系统**：不仅支持基于 Commit Log 的重置，还支持基于 Reflog 的操作级撤销（Undo）。
-*   **项目活动分析**：内置统计引擎，直观展示开发频率、代码贡献量及高频修改文件。
-*   **项目模板系统**：通过自定义 JSON 模板快速初始化标准化的开发环境。
+## ✨ Key Features
 
----
+*   **🚀 Interactive TUI**: Run `wally` without arguments to access a full command menu. No need to memorize CLI flags.
+*   **✅ Smart Staging**: Interactive `add` command with **diff previews**, file toggling, and bulk selection.
+*   **Conventional Commits**: Built-in wizard to enforce standard commit messages (feat, fix, chore, etc.) with scopes and bodies.
+*   **🛡️ Safe Syncing**:
+    *   **Update**: Automatically stashes local changes, pulls with rebase, and pops the stash to prevent conflicts.
+    *   **Push**: Detects remote divergence (e.g., after squashing) and offers safe `force-with-lease` pushing.
+*   **🌿 Branch Management**: Create, switch, delete, and **squash** branches interactively.
+*   **🤖 AI Context Generation**: Scans your project and generates `context.md` and `json` templates optimized for LLM/AI analysis.
+*   **🎨 Project Templates**: Initialize new projects with custom file structures defined in JSON.
+*   **📈 Activity Stats**: Visualize recent commit frequency, line changes, and most modified files.
+*   **🏷️ Semantic Tagging**: Automates version bumping (Major/Minor/Patch) and tagging.
 
-## 安装说明
+## 📦 Installation
 
-### 环境要求
+### Prerequisites
+*   **Git**: Ensure `git` is installed and available in your PATH.
+*   **Rust**: You need Cargo to build from source.
 
-*   已安装 Rust 编译环境 (Cargo)
+### Build from Source
+
 ```bash
-curl https://sh.rustup.rs -sSf | sh
+# Clone the repository
+git clone https://github.com/yourusername/wally.git
+cd wally
 
-```
-*   系统中已安装 Git
-
-### 编译与安装
-
-在项目根目录下执行：
-
-```bash
+# Install locally
 cargo install --path .
 ```
 
----
+Ensure your Cargo bin directory (usually `~/.cargo/bin`) is in your system PATH.
 
-## 命令指南
+## 📖 Usage Guide
 
-### 1. 项目初始化 (Project Setup)
+You can use Wally in two ways:
+1.  **Interactive Mode**: Simply run `wally` to open the main menu.
+2.  **Direct Mode**: Run `wally <command>` to execute a specific task.
 
-*   **`wally new [项目名]`**
-    从预设模板初始化仓库。支持交互式向导选择模板，并强制设置 `main` 为默认分支。
-*   **`wally context`**
-    扫描项目并生成 `info/context.md`。整合目录树和追踪文件的源码，专为 AI 代码分析设计的上下文生成工具。
+### 1. Workflow Essentials
 
-### 2. 日常开发与同步 (Development & Sync)
+*   **`wally add`**
+    Select files to stage.
+    *   `SPACE`: Toggle selection.
+    *   `a`: Toggle select all.
+    *   `→` / `←`: Expand/Collapse diff preview.
+    *   `ENTER`: Confirm staging.
+
+*   **`wally commit`**
+    Construct a commit message following Conventional Commits. You will be prompted for the type (feat, fix, etc.), scope, subject, and body.
+
+*   **`wally push`**
+    Push changes to the remote.
+    *   Automatically handles upstream setting if missing.
+    *   Detects if a force push is needed (e.g., after squashing) and uses `--force-with-lease` for safety.
 
 *   **`wally update`**
-    执行最安全的同步流程：自动暂存修改 -> 重命名 master 为 main -> `pull --rebase` -> 还原暂存 -> 交互式冲突引导。
-*   **`wally commit`**
-    全能提交助手：交互式勾选暂存文件 -> 选择提交类型（feat, fix 等） -> 填写作用域与描述 -> 自动询问并执行 Push。
+    Safely sync with the remote. It performs: `git stash` -> `git pull --rebase` -> `git stash pop`.
+
+### 2. Branching & History
+
 *   **`wally branch`**
-    交互式分支管理中心：
-    *   **Switch**: 快速切换分支。
-    *   **Create**: 创建带规范前缀（feat/, fix/ 等）的新分支。
-    *   **Merge**: 安全地将指定分支合并到当前分支。
-    *   **Delete**: 批量清理已合并或冗余的本地分支。
+    A unified menu to:
+    *   **Switch**: Interactive branch selection.
+    *   **Create**: Generate standardized branch names (e.g., `feat/login-page`).
+    *   **Squash**: Squash all commits in your feature branch into a single staged change relative to a base branch (main/master).
+    *   **Delete**: Remove local and remote branches.
+
 *   **`wally reset`**
-    双模式回滚工具：
-    *   **Undo Recent Actions**: 基于 `reflog` 撤销最近的 Git 操作（如错误的 rebase 或 merge）。
-    *   **Reset to Commit**: 基于提交历史执行 `HARD reset`。
+    *   **Reflog**: Undo recent actions (even "lost" commits).
+    *   **Log**: Hard reset to a specific commit history.
+
+### 3. Project Utilities
+
+*   **`wally new [name]`**
+    Initialize a new project using a built-in or custom template.
+
+*   **`wally context`**
+    Generates a snapshot of your project in `info/`.
+    *   `context.md`: Markdown file tree and code blocks (great for pasting into ChatGPT/Claude).
+    *   `project_template.json`: A JSON representation of your project structure.
+
 *   **`wally stats`**
-    项目活跃度看板：展示过去 7 天的提交频率、行数增减统计，以及过去 30 天内修改最频繁的 Top 5 文件。
+    View productivity metrics: commit counts (last 7 days), line additions/deletions, and top modified files.
 
-### 3. 模板管理 (Template Management)
+*   **`wally tag`**
+    View the current version and select the next semantic version (Patch/Minor/Major) to create and push a tag.
 
-*   **`wally list`**：列出所有已安装的项目模板及其描述。
-*   **`wally install [文件路径]`**：从本地 JSON 文件导入自定义模板。
-*   **`wally uninstall [模板名]`**：从系统中移除特定的自定义模板。
+## 🛠️ Template System
 
----
+Wally supports custom project templates defined in JSON.
 
-## 模板配置参考
-
-Wally 使用 JSON 格式定义模板。示例如下：
+### Template Structure
+Create a `.json` file (e.g., `react-starter.json`):
 
 ```json
 {
-  "template_name": "rust-basic",
-  "description": "基础 Rust 项目结构",
+  "template_name": "react-starter",
+  "description": "A basic React setup",
   "files": {
-    "Cargo.toml": "[package]\nname = \"{{name}}\"\nversion = \"0.1.0\"\nedition = \"2021\"",
-    "src/main.rs": "fn main() {\n    println!(\"Hello, world!\");\n}",
-    ".gitignore": "target/\nCargo.lock",
-    "README.md": "# 项目标题"
+    "src/": "",
+    "src/App.js": "console.log('Hello World');",
+    ".gitignore": "node_modules/\ndist/",
+    "README.md": "# My React Project"
   }
 }
 ```
 
+### Managing Templates
+*   **Install**: `wally install ./my-template.json`
+*   **List**: `wally list`
+*   **Uninstall**: `wally uninstall my-template`
+
+Templates are stored in `~/.wally/templates/`.
+
+## 🤝 Contributing
+
+Contributions are welcome! If you have ideas for new features or improvements:
+
+1.  Fork the repository.
+2.  Create your feature branch (`wally branch` -> Create).
+3.  Commit your changes (`wally commit`).
+4.  Push to the branch (`wally push`).
+5.  Open a Pull Request.
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
 ---
 
-## 设计哲学
-
-1.  **线性历史**：通过强制 `rebase` 消除无谓的 merge commits，保持清晰的线性演进过程。
-2.  **操作安全感**：通过自动 `stash` 和 `reflog` 可视化，降低误操作导致代码丢失的风险。
-3.  **减少上下文切换**：将统计、上下文生成、规范检查集成在工具内，让开发者尽量留在终端。
+<p align="center">
+  Built with 🦀 Rust by <a href="https://github.com/waliwuao">waliwuao</a>
+</p>
