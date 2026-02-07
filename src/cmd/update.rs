@@ -1,7 +1,7 @@
-use crate::cmd::{execute_git, execute_git_output};
+use crate::cmd::{execute_git, execute_git_output, get_remotes};
 use anyhow::Result;
 use console::{Style, Term};
-use dialoguer::{theme::ColorfulTheme, Select, Confirm};
+use dialoguer::{theme::ColorfulTheme, Select};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -13,21 +13,25 @@ pub fn run() -> Result<()> {
     let warning = Style::new().yellow();
     let dim = Style::new().dim();
 
-    // 1. 分支检查与重命名建议
     println!("{} Checking branch...", dim.apply_to("[1/4]"));
     let current_branch = get_current_branch()?;
-    if current_branch == "master" {
-        println!("{}", warning.apply_to("   Current branch is 'master'."));
-        if Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt("   Rename to 'main' to follow modern standards?")
-            .default(true)
-            .interact()? 
-        {
-            execute_git(&["branch", "-m", "master", "main"])?;
-        }
+    
+    let remotes = get_remotes()?;
+    if remotes.is_empty() {
+        return Err(anyhow::anyhow!("No remotes configured to update from."));
     }
 
-    // 2. 检查暂存区
+    let target_remote = if remotes.len() == 1 {
+        remotes[0].clone()
+    } else {
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select remote to pull from")
+            .items(&remotes)
+            .default(0)
+            .interact()?;
+        remotes[selection].clone()
+    };
+
     println!("{} Checking workspace...", dim.apply_to("[2/4]"));
     let has_changes = check_if_dirty()?;
     let mut stashed = false;
@@ -38,32 +42,23 @@ pub fn run() -> Result<()> {
         stashed = true;
     }
 
-    // 3. 拉取并变基
-    println!("{} Pulling from remote...", dim.apply_to("[3/4]"));
-    let pull_status = execute_git(&["pull", "--rebase"])?;
+    println!("{} Pulling from {}...", dim.apply_to("[3/4]"), target_remote);
+    let pull_status = execute_git(&["pull", "--rebase", &target_remote, &current_branch])?;
 
     if !pull_status.success() {
         if is_rebase_in_progress()? {
             handle_rebase_conflict_loop()?;
         } else {
-            let remote = "origin";
-            let branch = get_current_branch()?;
-            println!("   Standard pull failed. Trying {}/{}...", remote, branch);
-            let retry_status = execute_git(&["pull", "--rebase", remote, &branch])?;
-            if !retry_status.success() && is_rebase_in_progress()? {
-                handle_rebase_conflict_loop()?;
-            }
+            return Err(anyhow::anyhow!("Update failed. Please check your network or remote status."));
         }
     }
 
-    // 4. 恢复暂存区
     println!("{} Finalizing...", dim.apply_to("[4/4]"));
     if stashed {
         println!("   Restoring your stashed changes...");
         let status = execute_git(&["stash", "pop"])?;
         if !status.success() {
             println!("{}", Style::new().red().bold().apply_to("   STASH CONFLICT!"));
-            println!("   Your changes collided with remote changes. Please fix markers manually.");
         }
     }
 
@@ -126,7 +121,6 @@ fn handle_rebase_conflict_loop() -> Result<()> {
         }
 
         execute_git(&["add", "."])?;
-        // 使用环境变量避免弹出编辑器，直接尝试继续
         let status = std::process::Command::new("git")
             .env("GIT_EDITOR", "true") 
             .args(&["rebase", "--continue"])
@@ -153,7 +147,7 @@ fn print_conflict_details(file_path: &str) -> Result<()> {
         let reader = BufReader::new(file);
         let mut inside_conflict = false;
         
-        for line_res in reader.lines().take(50) { // 最多展示50行以防刷屏
+        for line_res in reader.lines().take(50) {
             let line = line_res.unwrap_or_default();
             if line.starts_with("<<<<<<<") { inside_conflict = true; }
             if inside_conflict {

@@ -40,3 +40,25 @@ pub fn print_git_cmd(args: &[&str]) {
     let symbol = Style::new().cyan().bold();
     println!("{} {}", symbol.apply_to(">"), cmd_style.apply_to(format!("git {}", args.join(" "))));
 }
+
+pub fn get_remotes() -> Result<Vec<String>> {
+    let output = execute_git_output(&["remote"])?;
+    let stdout = String::from_utf8(output.stdout)?;
+    Ok(stdout.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+}
+
+pub fn add_remote_workflow() -> Result<String> {
+    use dialoguer::{theme::ColorfulTheme, Input};
+    
+    let name: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Remote name (e.g., origin, github, gitee)")
+        .default("origin".into())
+        .interact_text()?;
+
+    let url: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("URL for remote '{}'", name))
+        .interact_text()?;
+
+    execute_git(&["remote", "add", &name, &url])?;
+    Ok(name)
+}
