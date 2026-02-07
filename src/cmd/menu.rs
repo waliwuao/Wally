@@ -45,6 +45,7 @@ pub fn run() -> Result<()> {
             Commands::List => cmd::list::run()?,
             Commands::Add => cmd::add::run()?,
             Commands::Commit => cmd::commit::run()?,
+            Commands::Push => cmd::push::run()?,
             Commands::Branch => cmd::branch::run()?,
             Commands::Update => cmd::update::run()?,
             Commands::Reset => cmd::reset::run()?,
@@ -75,8 +76,13 @@ fn get_menu_items() -> Vec<MenuItem> {
         },
         MenuItem {
             label: "Commit",
-            desc: "Commit and Push (Auto-fix squash)",
+            desc: "Commit changes",
             command: Commands::Commit,
+        },
+        MenuItem {
+            label: "Push",
+            desc: "Push to remote (Handles Squash/Force)",
+            command: Commands::Push,
         },
         MenuItem {
             label: "Update",

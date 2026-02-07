@@ -25,6 +25,9 @@ fn main() -> Result<()> {
         Some(Commands::Commit) => {
             cmd::commit::run()?;
         }
+        Some(Commands::Push) => {
+            cmd::push::run()?;
+        }
         Some(Commands::Branch) => {
             cmd::branch::run()?;
         }
@@ -46,7 +49,6 @@ fn main() -> Result<()> {
         Some(Commands::Uninstall { template_name }) => {
             cmd::uninstall::run(&template_name)?;
         }
-        // No arguments provided -> run the interactive menu
         None => {
             cmd::menu::run()?;
         }

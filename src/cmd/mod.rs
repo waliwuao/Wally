@@ -6,6 +6,7 @@ pub mod install;
 pub mod list;
 pub mod menu;
 pub mod new;
+pub mod push;
 pub mod reset;
 pub mod stats;
 pub mod tag;
@@ -18,7 +19,6 @@ use anyhow::{Context, Result};
 use console::Style;
 use std::process::{Command, ExitStatus, Output};
 
-/// Helper to execute git commands with unified printing style
 pub fn execute_git(args: &[&str]) -> Result<ExitStatus> {
     print_git_cmd(args);
     Command::new("git")
@@ -27,7 +27,6 @@ pub fn execute_git(args: &[&str]) -> Result<ExitStatus> {
         .context("Failed to execute git command")
 }
 
-/// Helper to execute git commands and capture output with unified printing style
 pub fn execute_git_output(args: &[&str]) -> Result<Output> {
     print_git_cmd(args);
     Command::new("git")
@@ -36,7 +35,6 @@ pub fn execute_git_output(args: &[&str]) -> Result<Output> {
         .context("Failed to execute git command")
 }
 
-/// Helper just to print the command
 pub fn print_git_cmd(args: &[&str]) {
     let cmd_style = Style::new().blue().bold();
     let symbol = Style::new().cyan().bold();
