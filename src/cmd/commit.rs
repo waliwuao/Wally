@@ -1,6 +1,6 @@
-use crate::cmd::{execute_git, execute_git_output, get_remotes, add_remote_workflow};
+use crate::cmd::{execute_git, execute_git_output};
 use anyhow::Result;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select, MultiSelect};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 
 struct CommitType<'a> {
     code: &'a str,
@@ -22,6 +22,7 @@ const COMMIT_TYPES: &[CommitType] = &[
 ];
 
 pub fn run() -> Result<()> {
+    // 1. 检查是否有暂存的文件
     let output = execute_git_output(&["diff", "--cached", "--name-only"])?;
     let staged = String::from_utf8(output.stdout)?;
 
@@ -31,6 +32,7 @@ pub fn run() -> Result<()> {
         return Ok(());
     }
 
+    // 2. 构建并执行 commit
     let message = build_commit_message()?;
     let status = execute_git(&["commit", "-m", &message])?;
 
@@ -39,14 +41,6 @@ pub fn run() -> Result<()> {
     }
 
     println!("Commit successful!");
-
-    if Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt("Do you want to push to remote?")
-        .default(true)
-        .interact()?
-    {
-        push_workflow()?;
-    }
 
     Ok(())
 }
@@ -57,6 +51,7 @@ fn build_commit_message() -> Result<String> {
         .map(|t| format!("{:<10} {}", t.code, t.desc))
         .collect();
 
+    // 选择类型
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select change type")
         .default(0)
@@ -66,11 +61,13 @@ fn build_commit_message() -> Result<String> {
 
     let selected_type = COMMIT_TYPES[selection].code;
 
+    // 输入范围
     let scope: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Scope (optional)")
         .allow_empty(true)
         .interact()?;
 
+    // 输入简述
     let subject: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Subject")
         .validate_with(|input: &String| -> Result<(), &str> {
@@ -78,11 +75,13 @@ fn build_commit_message() -> Result<String> {
         })
         .interact()?;
 
+    // 输入详情
     let body: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Body (optional)")
         .allow_empty(true)
         .interact()?;
 
+    // 拼接消息
     let mut message = if scope.trim().is_empty() {
         format!("{}: {}", selected_type, subject)
     } else {
@@ -95,37 +94,4 @@ fn build_commit_message() -> Result<String> {
     }
 
     Ok(message)
-}
-
-fn push_workflow() -> Result<()> {
-    let branch_output = execute_git_output(&["branch", "--show-current"])?;
-    let current_branch = String::from_utf8(branch_output.stdout)?.trim().to_string();
-
-    let mut remotes = get_remotes()?;
-
-    if remotes.is_empty() {
-        let new_remote = add_remote_workflow()?;
-        remotes.push(new_remote);
-    } else if remotes.len() > 1 {
-        let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select remotes to push to")
-            .items(&remotes)
-            .defaults(&vec![true; remotes.len()])
-            .interact()?;
-        
-        if selections.is_empty() {
-            println!("No remotes selected.");
-            return Ok(());
-        }
-        remotes = selections.iter().map(|&i| remotes[i].clone()).collect();
-    }
-
-    for remote in remotes {
-        println!("Pushing to {}...", remote);
-        let status = execute_git(&["push", &remote, &current_branch])?;
-        if !status.success() {
-            execute_git(&["push", "-u", &remote, &current_branch])?;
-        }
-    }
-    Ok(())
 }
